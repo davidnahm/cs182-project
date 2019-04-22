@@ -25,9 +25,11 @@ def generate_points_blue_noise(grid_x, grid_y, n_points, radius = 1.5, num_attem
 
     grid = [[-1 for i in range(grid_y)] for j in range(grid_x)]
     cells = []
+    edges = []
     active = []
 
-    init_sample = (random.uniform(0, grid_x - 1e-5), random.uniform(0, grid_y - 1e-5))
+    # slight modification instead of random sampling. This helps prevent squashing
+    init_sample = (grid_x // 2, grid_y // 2)
     cells.append(init_sample)
     grid[int(init_sample[0])][int(init_sample[1])] = 0
     active.append(0)
@@ -61,8 +63,9 @@ def generate_points_blue_noise(grid_x, grid_y, n_points, radius = 1.5, num_attem
                 grid[int(try_x)][int(try_y)] = len(cells) - 1
                 active.append(len(cells) - 1)
                 added_point = True
+                edges.append((index, len(cells) - 1))
                 break
         if not added_point:
             del active[active_index]
 
-    return cells
+    return cells, edges
