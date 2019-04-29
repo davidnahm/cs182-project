@@ -1,6 +1,7 @@
 import random
+import numpy as np
 
-def generate_points_blue_noise(grid_x, grid_y, n_points, radius = 1.5, num_attempts = 8):
+def generate_points_blue_noise(grid_x, grid_y, n_points, radius = 1.5, num_attempts = 8, provide_edges = False):
     # Setting radius < sqrt(2) will break this algorithm
     # The grid size is assumed to be 1 on each side.
     # Adapted from https://www.cs.ubc.ca/~rbridson/docs/bridson-siggraph07-poissondisk.pdf
@@ -63,9 +64,10 @@ def generate_points_blue_noise(grid_x, grid_y, n_points, radius = 1.5, num_attem
                 grid[int(try_x)][int(try_y)] = len(cells) - 1
                 active.append(len(cells) - 1)
                 added_point = True
-                edges.append((index, len(cells) - 1))
+                if provide_edges:
+                    edges.append((index, len(cells) - 1))
                 break
         if not added_point:
             del active[active_index]
-
-    return cells, edges
+    return np.array(cells), np.array(edges)
+    
