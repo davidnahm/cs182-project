@@ -4,6 +4,7 @@ from .blue_noise import generate_points_blue_noise
 from scipy.spatial import Delaunay
 import random
 import math
+import time
 
 class MazeChoice:
     def __init__(self, angle_divisions):
@@ -14,7 +15,7 @@ class MazeChoice:
 
 class MazeObservation:
     def __init__(self, angle_divisions, id_size):
-        self.shape = [angle_divisions, id_size]
+        self.shape = [angle_divisions + 1, id_size]
 
 class ExploreTask:
     """
@@ -47,7 +48,7 @@ class ExploreTask:
         id_size is the length of each "identifier" for a node, each feature of which is uniformly
         randomly selected from [-1, 0, 1]
         """
-        self.action_space = MazeChoice(angle_divisions, id_size)
+        self.action_space = MazeChoice(angle_divisions)
         self.observation_space = MazeObservation(angle_divisions, id_size)
         self.id_size = id_size
 
@@ -138,6 +139,9 @@ class ExploreTask:
         else:
             info['truncated'] = False
 
+        if done:
+            self.close_render()
+
         return self._observation(), rew, done, info
 
     def reset(self):
@@ -165,14 +169,17 @@ class ExploreTask:
             ax.plot(*edge_coords)
 
             ax.plot(self.points[:,0], self.points[:,1], 'ro')
+            # we draw the destination larger so that we can overlay the agent
+            ax.plot(*self.points[self.end_node], 'yo', markersize = 30)
             self.agent_display, = ax.plot(*self.points[self.agent], 'bo', markersize = 20)
-            ax.plot(*self.points[self.end_node], 'yo', markersize = 20) # destination
         else:
             self.agent_display.set_xdata(self.points[self.agent, 0])
             self.agent_display.set_ydata(self.points[self.agent, 1])
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
 
-    def close(self):
+    def close_render(self):
         if self.fig:
-            self.fig.close()
+            # sleep so user can see outcome
+            time.sleep(1.0)
+            plt.close(fig = self.fig)

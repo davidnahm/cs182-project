@@ -13,6 +13,7 @@ class CartPoleDummySchedule:
 
     def __init__(self):
         self.env = gym.make('CartPole-v0')
+        self.env_type_will_change = False
 
     def update(self, done, info):
         pass
@@ -42,6 +43,7 @@ class ExploreCreatorSchedule:
         self.gamma = gamma
         self.current_size = start_size
         self.is_tree = is_tree
+        self.env_type_will_change = False
 
     def update(self, done, info):
         """
@@ -57,12 +59,17 @@ class ExploreCreatorSchedule:
             if self.current_prop_estimate > self.ratio_completed_trigger:
                 self.current_prop_estimate = 0.0
                 self.current_size = int(self.current_size * self.jump_ratio)
+                self.env_type_will_change = True
 
     def new_env(self):
+        self.env_type_will_change = False
         return ExploreTask(self.current_size, self.is_tree)
 
 class VanillaPolicy:
-    def __init__(self, model, env_creator, lr_schedule, min_observations_per_step, log, gamma, fp_observations):
+    def __init__(self, model,
+                 env_creator, lr_schedule,
+                 min_observations_per_step,
+                 log, gamma, fp_observations, render = False, render_mod = 16):
         """
         gamma = our discount factor
         fp_observations = whether observations come as floating point (fp32). If they don't, we cast from int8.
@@ -72,6 +79,10 @@ class VanillaPolicy:
         self.min_observations_per_step = min_observations_per_step
         self.log = log
         self.gamma = gamma
+
+        self.render = render
+        self.render_mod = render_mod
+        self.n_episodes = 0 # how many episodes have been simulated to completion
 
         # We create a throwaway environment for the observation / action shape.
         # This shouldn't be too slow.
@@ -115,6 +126,9 @@ class VanillaPolicy:
         n_useless_actions = 0
         
         while True:
+            if self.render and self.n_episodes % self.render_mod == 0:
+                env.render()
+
             observations.append(obs)
             action = self.sample_op.eval(
                 session = self.session,
@@ -130,6 +144,7 @@ class VanillaPolicy:
             # if we are doing CartPole-v0, we just ignore this
             if 'correct_direction' in info and not info['correct_direction']:
                 n_useless_actions += 1
+
             if done:
                 break
         
@@ -137,6 +152,8 @@ class VanillaPolicy:
             'n_useless_actions': n_useless_actions,
             'n_steps': len(observations)
         }
+
+        self.n_episodes += 1
         return observations, rewards, actions, info
 
 
@@ -148,6 +165,14 @@ class VanillaPolicy:
         info = []
         while len(observations) < self.min_observations_per_step:
             observations_i, rewards_i, actions_i, info_i = self.sample_trajectory()
+
+            # We don't want to mix episodes where the environment is of varying difficulties.
+            # Since environments will not frequently increase in difficulty, I think it's 
+            # worth the performance hit to just restart with the new environment type.
+            if self.env_creator.env_type_will_change:
+                print("Environment type changing!")
+                return self.sample_trajectories()
+
             observations.extend(observations_i)
             reward_totals.append(sum(rewards_i))
             actions.extend(actions_i)
@@ -197,12 +222,14 @@ if __name__ == '__main__':
         model = (lambda *args, **varargs: models.mlp(n_layers = 2,
                                                      hidden_size = 64,
                                                      *args, **varargs)),
-        env_creator = CartPoleDummySchedule(),
+        env_creator = ExploreCreatorSchedule(),
         lr_schedule = lambda t: 5e-3,
         min_observations_per_step = 1000,
         log = log,
         gamma = 1.0,
-        fp_observations = True
+        fp_observations = False,
+        # render = True,
+        render_mod = 256
     )
     vp.optimize(100000)
     log.close()
