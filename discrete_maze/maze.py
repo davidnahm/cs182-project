@@ -5,35 +5,6 @@ from scipy.spatial import Delaunay
 import random
 import math
 
-def visualize(points, edges):
-    edge_coords = []
-    for node_a, node_b in edges:
-        edge_coords.append([points[node_a][0], points[node_b][0]])
-        edge_coords.append([points[node_a][1], points[node_b][1]])
-    plt.plot(*edge_coords)
-    plt.plot(points[:, 0], points[:, 1], 'ro')
-    plt.show()
-
-    tri = Delaunay(points)
-    # plt.triplot(points[:,0], points[:,1], tri.simplices.copy())
-
-    edge_coords = []
-    indices, indptr = tri.vertex_neighbor_vertices
-    for index_i in range(indices.shape[0] - 1):
-        for index in range(indices[index_i], indices[index_i + 1]):
-            pa, pb = points[index_i], points[indptr[index]]
-            dx, dy = pa[0] - pb[0], pa[1] - pb[1]
-            if dx * dx + dy * dy < 1.5 * 1.5 * 4:
-                edge_coords.append([points[index_i][0], points[indptr[index]][0]])
-                edge_coords.append([points[index_i][1], points[indptr[index]][1]])
-    plt.plot(*edge_coords)
-    plt.plot(points[:,0], points[:,1], 'ro')
-    plt.show()
-
-# visualize(*generate_points_blue_noise(10, 10, 20, provide_edges = True))
-# visualize(*generate_points_blue_noise(3, 3, 3, provide_edges = True))
-# visualize(*generate_points_blue_noise(50, 50, 100, provide_edges = True))
-
 class MazeChoice:
     size = 16
     def sample(self):
@@ -52,7 +23,7 @@ class ExploreTask:
     """
     action_space = MazeChoice()
     point_dist = 1.5
-    id_size = 4
+    id_size = 5
 
     def __init__(self, n_points, is_tree = True):
         map_size = int(math.sqrt(n_points) * self.point_dist * 2)
@@ -63,6 +34,11 @@ class ExploreTask:
                                 provide_edges = is_tree)
         self.edge_list = [[] for p in self.points]
         self.point_ids = np.random.randint(-1, 2, size = (n_points, self.id_size))
+
+        # this is so that points are always distinguishable from empty parts
+        # of the observation.
+        self.point_ids[:, 0] = 1.0
+        
         if not is_tree:
             tri = Delaunay(self.points)
             indices, indptr = tri.vertex_neighbor_vertices
@@ -90,6 +66,10 @@ class ExploreTask:
         # Figure for rendering plots
         self.fig = None
 
+        # We allow the agent to go to each node approximately 5
+        # times before terminating the session.
+        self.max_allowed_steps = 5 * self.points.shape[0]
+
     def _angle_index(self, node_i):
         point = self.points[node_i]
         dx, dy = point[0] - self.points[self.agent, 0], point[1] - self.points[self.agent, 1]
@@ -116,13 +96,22 @@ class ExploreTask:
 
         # searching if one of the neighbors is in the direction
         # of the action, and moving to that location if it is.
+        matched = False
         for node_i in self.edge_list[self.agent]:
             if self._angle_index(node_i) == action:
                 self.agent = node_i
+                matched = True
                 break
+        info['correct_direction'] = matched
 
         done = self.agent == self.end_node
         rew = 0.0 if done else -1.0
+
+        if self.n_steps > self.max_allowed_steps:
+            done = True
+            info['truncated'] = True
+        else:
+            info['truncated'] = False
 
         return self._observation(), rew, done, info
 
