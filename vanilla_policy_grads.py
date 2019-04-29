@@ -62,7 +62,11 @@ class ExploreCreatorSchedule:
         return ExploreTask(self.current_size, self.is_tree)
 
 class VanillaPolicy:
-    def __init__(self, model, env_creator, lr_schedule, min_observations_per_step, log, gamma):
+    def __init__(self, model, env_creator, lr_schedule, min_observations_per_step, log, gamma, fp_observations):
+        """
+        gamma = our discount factor
+        fp_observations = whether observations come as floating point (fp32). If they don't, we cast from int8.
+        """
         self.env_creator = env_creator
         self.lr_schedule = lr_schedule
         self.min_observations_per_step = min_observations_per_step
@@ -73,19 +77,25 @@ class VanillaPolicy:
         # This shouldn't be too slow.
         dummy_env = env_creator.new_env()
 
-        self.obs_placeholder = tf.placeholder(tf.int8,
+        obs_dtype = tf.float32 if fp_observations else tf.int8
+        self.obs_placeholder = tf.placeholder(obs_dtype,
                                               shape = [None] + list(dummy_env.observation_space.shape),
                                               name = "observation")
+        if fp_observations:
+            obs_input = self.obs_placeholder
+        else:
+            obs_input = tf.cast(self.obs_placeholder, tf.float32)
+        self.net_op = model(obs_input,
+                            out_size = dummy_env.action_space.n,
+                            scope = "mlp")
+
         self.action_placeholder = tf.placeholder(tf.int32, shape = [None],
                                               name = "action")
         self.adv_placeholder = tf.placeholder(tf.float32, shape = [None], name = "advantage")
         self.lr_placeholder = tf.placeholder(tf.float32, shape = [], name = "learning_rate")
-        self.net_op = model(tf.cast(self.obs_placeholder, tf.float32),
-                            out_size = dummy_env.action_space.n,
-                            scope = "mlp")
         self.distribution = tf.distributions.Categorical(logits = self.net_op)
         self.sample_op = self.distribution.sample()
-        self.logprob_op = self.distribution.log_prob(self.sample_op)
+        self.logprob_op = self.distribution.log_prob(self.action_placeholder)
         self.policy_value_op = tf.reduce_sum(self.logprob_op * self.adv_placeholder)
         self.update_op = tf.train.AdamOptimizer(self.lr_placeholder).minimize(-self.policy_value_op)
 
@@ -191,7 +201,8 @@ if __name__ == '__main__':
         lr_schedule = lambda t: 5e-3,
         min_observations_per_step = 1000,
         log = log,
-        gamma = 1.0
+        gamma = 1.0,
+        fp_observations = True
     )
     vp.optimize(100000)
     log.close()
