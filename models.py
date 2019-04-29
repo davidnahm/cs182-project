@@ -7,8 +7,8 @@ def mlp(input_placeholder, scope, out_size,
         n_layers = 1,
         hidden_size = 32,
         activation = tf.tanh):
-    with tf.scope(scope):
-        x = tf.flatten(input_placeholder)
+    with tf.variable_scope(scope):
+        x = tf.layers.flatten(input_placeholder)
         for _ in range(n_layers):
             x = tf.layers.dense(x, hidden_size, activation = activation)
         x = tf.layers.dense(x, out_size)

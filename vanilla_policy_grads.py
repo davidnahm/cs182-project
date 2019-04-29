@@ -1,9 +1,24 @@
 from discrete_maze.maze import ExploreTask
+import models
+import loggy
+import tensorflow as tf
+import gym
+import numpy as np
 
-et = ExploreTask(10)
-et.reset()
-observation, reward, done, info = et.step(et.action_space.sample())
-print(observation)
+class CartPoleDummySchedule:
+    """
+    This class is just meant to be substituted in for ExploreCreatorSchedule
+    so that you can check that Policy Gradients works.
+    """
+
+    def __init__(self):
+        self.env = gym.make('CartPole-v0')
+
+    def update(self, done, info):
+        pass
+
+    def new_env(self):
+        return self.env
 
 class ExploreCreatorSchedule:
     """
@@ -47,12 +62,136 @@ class ExploreCreatorSchedule:
         return ExploreTask(self.current_size, self.is_tree)
 
 class VanillaPolicy:
-    def __init__(model, env_creator):
-        # create operations for
-        # [ ] sampling action
-        # [ ] calculate loss
-        # [ ] optimize
-        # create function to create
-        # create function to get advantage given trajectories
+    def __init__(self, model, env_creator, lr_schedule, min_observations_per_step, log, gamma):
+        self.env_creator = env_creator
+        self.lr_schedule = lr_schedule
+        self.min_observations_per_step = min_observations_per_step
+        self.log = log
+        self.gamma = gamma
 
-        pass
+        # We create a throwaway environment for the observation / action shape.
+        # This shouldn't be too slow.
+        dummy_env = env_creator.new_env()
+
+        self.obs_placeholder = tf.placeholder(tf.int8,
+                                              shape = [None] + list(dummy_env.observation_space.shape),
+                                              name = "observation")
+        self.action_placeholder = tf.placeholder(tf.int32, shape = [None],
+                                              name = "action")
+        self.adv_placeholder = tf.placeholder(tf.float32, shape = [None], name = "advantage")
+        self.lr_placeholder = tf.placeholder(tf.float32, shape = [], name = "learning_rate")
+        self.net_op = model(tf.cast(self.obs_placeholder, tf.float32),
+                            out_size = dummy_env.action_space.n,
+                            scope = "mlp")
+        self.distribution = tf.distributions.Categorical(logits = self.net_op)
+        self.sample_op = self.distribution.sample()
+        self.logprob_op = self.distribution.log_prob(self.sample_op)
+        self.policy_value_op = tf.reduce_sum(self.logprob_op * self.adv_placeholder)
+        self.update_op = tf.train.AdamOptimizer(self.lr_placeholder).minimize(-self.policy_value_op)
+
+        tf_config = tf.ConfigProto()
+        tf_config.gpu_options.allow_growth = True
+        self.session = tf.Session(config = tf_config)
+        tf.global_variables_initializer().run(session = self.session)
+
+    def sample_trajectory(self):
+        env = self.env_creator.new_env()
+        observations = []
+        rewards = []
+        actions = []
+        obs = env.reset()
+
+        # This counts how many actions were in directions without nodes
+        n_useless_actions = 0
+        
+        while True:
+            observations.append(obs)
+            action = self.sample_op.eval(
+                session = self.session,
+                feed_dict = {
+                    self.obs_placeholder: obs[None]
+                }
+            )[0]
+            actions.append(action)
+            obs, reward, done, info = env.step(action)
+            self.env_creator.update(done, info)
+            rewards.append(reward)
+
+            # if we are doing CartPole-v0, we just ignore this
+            if 'correct_direction' in info and not info['correct_direction']:
+                n_useless_actions += 1
+            if done:
+                break
+        
+        info = {
+            'n_useless_actions': n_useless_actions,
+            'n_steps': len(observations)
+        }
+        return observations, rewards, actions, info
+
+
+    def sample_trajectories(self):
+        observations = []
+        advantages = []
+        actions = []
+        reward_totals = []
+        info = []
+        while len(observations) < self.min_observations_per_step:
+            observations_i, rewards_i, actions_i, info_i = self.sample_trajectory()
+            observations.extend(observations_i)
+            reward_totals.append(sum(rewards_i))
+            actions.extend(actions_i)
+            info.append(info_i)
+
+            # cummulative rewards
+            cum_reward = 0.0
+            advantages_i = []
+            for reward in rewards_i[::-1]:
+                cum_reward *= self.gamma
+                cum_reward += reward
+                advantages_i.append(cum_reward)
+            advantages.extend(advantages_i[::-1])
+        
+        observations = np.array(observations)
+        advantages = np.array(advantages)
+        
+        # normalizing advantages
+        advantages -= np.mean(advantages)
+        advantages /= np.std(advantages)
+
+        actions = np.array(actions)
+
+        return observations, advantages, actions, reward_totals, info
+        
+
+    def optimize(self, total_steps):
+        steps = 0
+
+        while steps < total_steps:
+            observations, advantages, actions, reward_totals, info = self.sample_trajectories()
+            self.update_op.run(
+                session = self.session,
+                feed_dict = {
+                    self.obs_placeholder: observations,
+                    self.action_placeholder: actions,
+                    self.adv_placeholder: advantages,
+                    self.lr_placeholder: self.lr_schedule(steps)
+                }
+            )
+            print('average reward:', sum(reward_totals) / len(reward_totals))
+            steps += observations.shape[0]
+
+if __name__ == '__main__':
+    log = loggy.Log("test")
+    vp = VanillaPolicy(
+        model = (lambda *args, **varargs: models.mlp(n_layers = 2,
+                                                     hidden_size = 64,
+                                                     *args, **varargs)),
+        env_creator = CartPoleDummySchedule(),
+        lr_schedule = lambda t: 5e-3,
+        min_observations_per_step = 1000,
+        log = log,
+        gamma = 1.0
+    )
+    vp.optimize(100000)
+    log.close()

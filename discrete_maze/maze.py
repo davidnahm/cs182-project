@@ -6,10 +6,15 @@ import random
 import math
 
 class MazeChoice:
-    size = 16
-    def sample(self):
-        return random.randint(0, self.size - 1)
+    def __init__(self, angle_divisions):
+        self.n = angle_divisions
 
+    def sample(self):
+        return random.randint(0, self.n - 1)
+
+class MazeObservation:
+    def __init__(self, angle_divisions, id_size):
+        self.shape = [angle_divisions, id_size]
 
 class ExploreTask:
     """
@@ -20,12 +25,32 @@ class ExploreTask:
     This task puts an agent on a random node in a randomly generated
     planar graph, and rewards the agent for quickly finding an "exit"
     node.
-    """
-    action_space = MazeChoice()
-    point_dist = 1.5
-    id_size = 5
 
-    def __init__(self, n_points, is_tree = True):
+    Observations are numpy arrays of dtype int8.
+    """
+    point_dist = 1.5
+
+    def __init__(self, n_points, is_tree = True, max_allowed_step_ratio = 2.5,
+                angle_divisions = 16, id_size = 5):
+        """
+        It's not strictly guaranteed that you will get n_points in the graph, 
+        as potentially there might be fewer due to the generating grid not being large enough.
+        However, I have not seen this happen.
+
+        max_allowed_step_ratio determines how quickly an episode will end. We multiply
+        it by the number of nodes in the graph to get how many steps we allow in the episode.
+
+        angle_divisions is the number of angles along which we sample for edges in an observation,
+        as well as the size of the action space. Making this finer will help give more positioning
+        information, but will be more expensive.
+
+        id_size is the length of each "identifier" for a node, each feature of which is uniformly
+        randomly selected from [-1, 0, 1]
+        """
+        self.action_space = MazeChoice(angle_divisions, id_size)
+        self.observation_space = MazeObservation(angle_divisions, id_size)
+        self.id_size = id_size
+
         map_size = int(math.sqrt(n_points) * self.point_dist * 2)
         self.points, edges = generate_points_blue_noise(map_size,
                                 map_size,
@@ -33,11 +58,11 @@ class ExploreTask:
                                 radius = self.point_dist,
                                 provide_edges = is_tree)
         self.edge_list = [[] for p in self.points]
-        self.point_ids = np.random.randint(-1, 2, size = (n_points, self.id_size))
+        self.point_ids = np.random.randint(-1, 2, size = (n_points, self.id_size), dtype = np.int8)
 
         # this is so that points are always distinguishable from empty parts
         # of the observation.
-        self.point_ids[:, 0] = 1.0
+        self.point_ids[:, 0] = 1
         
         if not is_tree:
             tri = Delaunay(self.points)
@@ -54,32 +79,32 @@ class ExploreTask:
                         self.edge_list[index_i].append(indptr[index])
         else:
             for node_a, node_b in edges:
-                self.edge_list[node_a].append(node_b)            
+                self.edge_list[node_a].append(node_b)
                 self.edge_list[node_b].append(node_a)
         
-        # First coordinate is 1 + action_space.size because
+        # First coordinate is 1 + action_space.n because
         # we include the id of the node the agent is on in the
         # observation
-        self.obs_size = [self.action_space.size + 1, self.id_size]
+        self.obs_shape = [self.action_space.n + 1, self.id_size]
         self.end_node = random.randint(0, len(self.points) - 1)
 
         # Figure for rendering plots
         self.fig = None
 
-        # We allow the agent to go to each node approximately 5
+        # We allow the agent to go to each node approximately max_allowed_step_ratio
         # times before terminating the session.
-        self.max_allowed_steps = 5 * self.points.shape[0]
+        self.max_allowed_steps = max_allowed_step_ratio * self.points.shape[0]
 
     def _angle_index(self, node_i):
         point = self.points[node_i]
         dx, dy = point[0] - self.points[self.agent, 0], point[1] - self.points[self.agent, 1]
-        angle_index = int((np.arctan2(dy, dx) / np.pi + 1) * self.action_space.size)
+        angle_index = int((np.arctan2(dy, dx) / np.pi + 1) * self.action_space.n)
 
         # Correcting for possible floating point error
-        return max(0, min(angle_index, self.action_space.size - 1))
+        return max(0, min(angle_index, self.action_space.n - 1))
 
     def _observation(self):
-        obs = np.zeros(self.obs_size)
+        obs = np.zeros(self.obs_shape, dtype = np.int8)
         obs[0] = self.point_ids[self.agent]
         agent_p = self.points[self.agent]
         for node_i in self.edge_list[self.agent]:
