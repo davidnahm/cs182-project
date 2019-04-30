@@ -5,6 +5,7 @@ from scipy.spatial import Delaunay
 import random
 import math
 import time
+from collections import deque
 
 class MazeChoice:
     def __init__(self, angle_divisions):
@@ -36,7 +37,9 @@ class ExploreTask:
 
     def __init__(self, n_points, is_tree = True, max_allowed_step_ratio = 2.5,
                 angle_divisions = 16, id_size = 5,
-                history_size = 2):
+                history_size = 1,
+                place_agent_far_from_dest = True,
+                agent_placement_prop = 0.8):
         """
         It's not strictly guaranteed that you will get n_points in the graph, 
         as potentially there might be fewer due to the generating grid not being large enough.
@@ -55,11 +58,21 @@ class ExploreTask:
         history_size determines how many previous frames we give the agent. Frames which don't exist
         are just set to 0, which uniquely identifies a non-existent frame as each valid frames must
         have frame[0][0] == 1
+
+        place_agent_far_from_dest will use DFS to find the distances for each node from the end node,
+        treating all edges as the same length as the actual distance does not matter. It will then take a
+        random node more than MAX_DISTANCE * agent_placement_prop away from the end node and place the
+        agent there. Turning this option on helps make random actions less likely to finish the task,
+        and helps make the gradients more meaningful as otherwise some environments may place the agent
+        too close to the destination node, falsely giving the sense that that particular agent's behavior
+        was somehow better. This also doesn't seem to slow down initialization too much.
         """
         self.action_space = MazeChoice(angle_divisions)
         self.observation_space = MazeObservation(history_size, angle_divisions, id_size)
-        self.history_size = history_size
         self.id_size = id_size
+        self.history_size = history_size
+        self.place_agent_far_from_dest = place_agent_far_from_dest
+        self.agent_placement_prop = agent_placement_prop
 
         map_size = int(math.sqrt(n_points) * self.point_dist * 2)
         self.points, edges = generate_points_blue_noise(map_size,
@@ -67,7 +80,9 @@ class ExploreTask:
                                 n_points,
                                 radius = self.point_dist,
                                 provide_edges = is_tree)
-        assert self.points.shape[0] == n_points # putting this in for safety
+
+        # would be annoying if this actually activated.
+        # assert self.points.shape[0] == n_points
 
         self.edge_list = [[] for p in self.points]
         self.point_ids = np.random.randint(-1, 2, size = (n_points, self.id_size), dtype = np.int8)
@@ -102,6 +117,8 @@ class ExploreTask:
         # We allow the agent to go to each node approximately max_allowed_step_ratio
         # times before terminating the session.
         self.max_allowed_steps = max_allowed_step_ratio * self.points.shape[0]
+
+        self.placement_candidates = None
 
     def _angle_index(self, node_i):
         point = self.points[node_i]
@@ -153,16 +170,41 @@ class ExploreTask:
         return self._observation(), rew, done, info
 
     def reset(self):
-        # Will never create a new maze, but will just place
-        # agent on random node.
+        """
+        Will never create a new maze, but will just place agent on random node.
+        See note for __init__ to see effect of self.place_agent_far_from_dest
+        """
         self.n_steps = 0
-        self.agent = random.randint(0, len(self.points) - 1)
         self.observation_history = np.zeros(self.observation_space.shape, dtype = np.int8)
-        while self.agent == self.end_node:
+
+        if not self.place_agent_far_from_dest:
             self.agent = random.randint(0, len(self.points) - 1)
+            while self.agent == self.end_node:
+                self.agent = random.randint(0, len(self.points) - 1)
+        else:
+            if not self.placement_candidates:
+                q = deque([self.end_node])
+                distances = [None for _ in range(self.points.shape[0])]
+                visited = [False for _ in range(self.points.shape[0])]
+                distances[self.end_node] = 0
+                visited[self.end_node] = True
+                max_dist = 0
+                while len(q) > 0:
+                    node_a = q.popleft()
+                    for node_b in self.edge_list[node_a]:
+                        if not visited[node_b]:
+                            distances[node_b] = 1 + distances[node_a]
+                            max_dist = max(max_dist, distances[node_b])
+                            visited[node_b] = True
+                            q.append(node_b)
+                cutoff_dist = int(max_dist * self.agent_placement_prop)
+                self.placement_candidates = [i for i, d in enumerate(distances) if d >= cutoff_dist]
+
+            self.agent = random.choice(self.placement_candidates)
+
         return self._observation()
 
-    def render(self):
+    def render(self, debug = False):
         if not self.fig:
             plt.ion()
             self.fig = plt.figure()
@@ -178,9 +220,12 @@ class ExploreTask:
             ax.plot(*edge_coords)
 
             ax.plot(self.points[:,0], self.points[:,1], 'ro')
+            if debug:
+                placement_points = self.points[self.placement_candidates]
+                ax.plot(placement_points[:, 0], placement_points[:, 1], 'co', markersize = 22)
             # we draw the destination larger so that we can overlay the agent
-            ax.plot(*self.points[self.end_node], 'yo', markersize = 30)
-            self.agent_display, = ax.plot(*self.points[self.agent], 'bo', markersize = 20)
+            ax.plot(*self.points[self.end_node], 'yo', markersize = 22)
+            self.agent_display, = ax.plot(*self.points[self.agent], 'bo', markersize = 15)
         else:
             self.agent_display.set_xdata(self.points[self.agent, 0])
             self.agent_display.set_ydata(self.points[self.agent, 1])

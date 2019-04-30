@@ -34,7 +34,7 @@ class ExploreCreatorSchedule:
                 jump_ratio = 1.3,
                 gamma = 0.975,
                 start_size = 4,
-                is_tree = False):
+                **explore_args):
         """
         Make sure int(jump_ratio * start_size) > start_size or nothing will happen.
         """
@@ -43,7 +43,7 @@ class ExploreCreatorSchedule:
         self.jump_ratio = jump_ratio
         self.gamma = gamma
         self.current_size = start_size
-        self.is_tree = is_tree
+        self.explore_args = explore_args
         self.env_type_will_change = False
 
     def update(self, done, info):
@@ -64,7 +64,7 @@ class ExploreCreatorSchedule:
 
     def new_env(self):
         self.env_type_will_change = False
-        return ExploreTask(self.current_size, self.is_tree)
+        return ExploreTask(self.current_size, **self.explore_args)
 
 class VanillaPolicy:
     def __init__(self, model,
@@ -228,14 +228,14 @@ if __name__ == '__main__':
         model = (lambda *args, **varargs: models.mlp(n_layers = 2,
                                                      hidden_size = 64,
                                                      *args, **varargs)),
-        env_creator = ExploreCreatorSchedule(),
+        env_creator = ExploreCreatorSchedule(is_tree = False, history_size = 2),
         lr_schedule = lambda t: 5e-3,
-        min_observations_per_step = 5000,
+        min_observations_per_step = 1000,
         log = log,
         gamma = 1.0,
         fp_observations = False,
         render = True,
-        render_mod = 1024
+        render_mod = 128
     )
     vp.optimize(2000000)
     log.close()
