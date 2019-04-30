@@ -1,5 +1,5 @@
 from discrete_maze.maze import ExploreTask
-from vanilla_policy_grads import ExploreCreatorSchedule as ECS
+from schedules import ExploreCreatorSchedule as ECS
 import random
 from tqdm import tqdm
 

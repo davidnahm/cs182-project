@@ -1,73 +1,13 @@
-from discrete_maze.maze import ExploreTask
 import models
 import loggy
 import tensorflow as tf
 import gym
 import numpy as np
 import time
-
-class CartPoleDummySchedule:
-    """
-    This class is just meant to be substituted in for ExploreCreatorSchedule
-    so that you can check that Policy Gradients works.
-    """
-
-    def __init__(self):
-        self.env = gym.make('CartPole-v0')
-        self.env_type_will_change = False
-
-    def update(self, done, info):
-        pass
-
-    def new_env(self):
-        return self.env
-
-class ExploreCreatorSchedule:
-    """
-    This class will take in values from environment.step
-    and determine how large the next generated environment should be.
-    Will scale up environments when enough runs are finished without
-    timing out.
-    """
-    def __init__(self,
-                ratio_completed_trigger = 0.75,
-                jump_ratio = 1.3,
-                gamma = 0.975,
-                start_size = 4,
-                **explore_args):
-        """
-        Make sure int(jump_ratio * start_size) > start_size or nothing will happen.
-        """
-        self.current_prop_estimate = 0.0
-        self.ratio_completed_trigger = ratio_completed_trigger
-        self.jump_ratio = jump_ratio
-        self.gamma = gamma
-        self.current_size = start_size
-        self.explore_args = explore_args
-        self.env_type_will_change = False
-
-    def update(self, done, info):
-        """
-        Pass the "done" and "info" values returned from
-        environment.step. 
-        """
-        if done:
-            self.current_prop_estimate *= self.gamma
-            if not info['truncated']:
-                # we finished the run without truncating; this
-                # counts as a success
-                self.current_prop_estimate += 1 - self.gamma
-            if self.current_prop_estimate > self.ratio_completed_trigger:
-                self.current_prop_estimate = 0.0
-                self.current_size = int(self.current_size * self.jump_ratio)
-                self.env_type_will_change = True
-
-    def new_env(self):
-        self.env_type_will_change = False
-        return ExploreTask(self.current_size, **self.explore_args)
+import schedules
 
 class VanillaPolicy:
-    def __init__(self, model,
+    def __init__(self, model, value_model,
                  env_creator, lr_schedule,
                  min_observations_per_step,
                  log, gamma, fp_observations, render = False, render_mod = 16):
@@ -105,10 +45,19 @@ class VanillaPolicy:
                                               name = "action")
         self.adv_placeholder = tf.placeholder(tf.float32, shape = [None], name = "advantage")
         self.lr_placeholder = tf.placeholder(tf.float32, shape = [], name = "learning_rate")
-        self.distribution = tf.distributions.Categorical(logits = self.net_op)
-        self.sample_op = self.distribution.sample()
-        self.logprob_op = self.distribution.log_prob(self.action_placeholder)
-        self.policy_value_op = tf.reduce_sum(self.logprob_op * self.adv_placeholder)
+        self.distribution = tf.distributions.Categorical(logits = self.net_op, name = "action_distribution")
+        self.sample_op = self.distribution.sample(name = "sample_action")
+        self.logprob_op = self.distribution.log_prob(self.action_placeholder, name = "logprob_for_action")
+
+        # Idea for logging approximate KL divergence and Entropy comes from spinningup RL
+        # In Vanilla Policy Gradients, KL divergence will always be 0 unless we iterate multiple times
+        # on the same actions, which would not make much sense.
+        self.logprob_sample_op = self.distribution.log_prob(self.sample_op, name = "logprob_sample")
+        self.logprob_sample_placeholder = tf.placeholder(tf.float32, shape = [None], name = "logprob_sample_placeholder")
+        self.approx_entropy_op = -tf.reduce_mean(self.logprob_op, name = "approximate_entropy")
+        self.approx_kl_divergence_op = -tf.reduce_mean(self.logprob_sample_placeholder - self.logprob_op)
+
+        self.policy_value_op = tf.reduce_sum(self.logprob_op * self.adv_placeholder, name = "policy_value")
         self.update_op = tf.train.AdamOptimizer(self.lr_placeholder).minimize(-self.policy_value_op)
 
         tf_config = tf.ConfigProto()
@@ -121,6 +70,7 @@ class VanillaPolicy:
         observations = []
         rewards = []
         actions = []
+        logprobs = []
         obs = env.reset()
 
         # This counts how many actions were in directions without nodes
@@ -131,13 +81,16 @@ class VanillaPolicy:
                 env.render()
 
             observations.append(obs)
-            action = self.sample_op.eval(
-                session = self.session,
+            action, logprob = self.session.run(
+                [self.sample_op, self.logprob_sample_op],
                 feed_dict = {
                     self.obs_placeholder: obs[None]
                 }
-            )[0]
+            )
+            action = action[0]
             actions.append(action)
+            logprobs.append(logprob[0])
+
             obs, reward, done, info = env.step(action)
             self.env_creator.update(done, info)
             rewards.append(reward)
@@ -160,7 +113,7 @@ class VanillaPolicy:
         }
 
         self.n_episodes += 1
-        return observations, rewards, actions, info
+        return observations, rewards, actions, logprobs, info
 
 
     def sample_trajectories(self):
@@ -168,9 +121,10 @@ class VanillaPolicy:
         advantages = []
         actions = []
         reward_totals = []
+        logprobs = []
         info = []
         while len(observations) < self.min_observations_per_step:
-            observations_i, rewards_i, actions_i, info_i = self.sample_trajectory()
+            observations_i, rewards_i, actions_i, logprobs_i, info_i = self.sample_trajectory()
 
             # We don't want to mix episodes where the environment is of varying difficulties.
             # Since environments will not frequently increase in difficulty, I think it's 
@@ -182,6 +136,7 @@ class VanillaPolicy:
             observations.extend(observations_i)
             reward_totals.append(sum(rewards_i))
             actions.extend(actions_i)
+            logprobs.extend(logprobs_i)
             info.append(info_i)
 
             # cummulative rewards
@@ -202,16 +157,16 @@ class VanillaPolicy:
 
         actions = np.array(actions)
 
-        return observations, advantages, actions, reward_totals, info
+        return observations, advantages, actions, reward_totals, logprobs, info
         
 
     def optimize(self, total_steps):
         steps = 0
 
         while steps < total_steps:
-            observations, advantages, actions, reward_totals, info = self.sample_trajectories()
-            self.update_op.run(
-                session = self.session,
+            observations, advantages, actions, reward_totals, logprobs, info = self.sample_trajectories()
+            _, approximate_entropy = self.session.run(
+                [self.update_op, self.approx_entropy_op],
                 feed_dict = {
                     self.obs_placeholder: observations,
                     self.action_placeholder: actions,
@@ -219,8 +174,20 @@ class VanillaPolicy:
                     self.lr_placeholder: self.lr_schedule(steps)
                 }
             )
-            print('average reward:', sum(reward_totals) / len(reward_totals))
             steps += observations.shape[0]
+
+            reward_totals = np.array(reward_totals)
+
+            log_data = {
+                'average reward': np.mean(reward_totals),
+                'std of reward': np.std(reward_totals),
+                'approximate action entropy': approximate_entropy,
+                'simulation steps': steps
+            }
+            self.env_creator.add_logging_data(log_data)
+
+            self.log.step(log_data)
+            self.log.print_step()
 
 if __name__ == '__main__':
     log = loggy.Log("test")
@@ -228,13 +195,18 @@ if __name__ == '__main__':
         model = (lambda *args, **varargs: models.mlp(n_layers = 2,
                                                      hidden_size = 64,
                                                      *args, **varargs)),
-        env_creator = ExploreCreatorSchedule(is_tree = False, history_size = 2),
+        value_model = (lambda *args, **varargs: tf.squeeze(models.mlp(n_layers = 2,
+                                                           hidden_size = 64,
+                                                           out_size = 1,
+                                                           *args, **varargs), axis = 1)),
+        # env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 2),
+        env_creator = schedules.CartPoleDummySchedule(),
         lr_schedule = lambda t: 5e-3,
         min_observations_per_step = 1000,
         log = log,
         gamma = 1.0,
         fp_observations = False,
-        render = True,
+        render = False,
         render_mod = 128
     )
     vp.optimize(2000000)

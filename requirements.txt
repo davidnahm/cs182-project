@@ -40,6 +40,7 @@ scipy=1.2.1=pypi_0
 setuptools=40.2.0=py35_0
 six=1.12.0=pypi_0
 sqlite=3.28.0=h7b6447c_0
+tabulate=0.8.3=pypi_0
 tensorboard=1.13.1=pypi_0
 tensorflow-estimator=1.13.0=pypi_0
 tensorflow-gpu=1.13.1=pypi_0
