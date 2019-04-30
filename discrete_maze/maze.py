@@ -14,8 +14,11 @@ class MazeChoice:
         return random.randint(0, self.n - 1)
 
 class MazeObservation:
-    def __init__(self, angle_divisions, id_size):
-        self.shape = [angle_divisions + 1, id_size]
+    def __init__(self, history_size, angle_divisions, id_size):
+        # Second coordinate is angle_divisions + 1because
+        # we include the id of the node the agent is on in the
+        # observation
+        self.shape = [history_size, angle_divisions + 1, id_size]
 
 class ExploreTask:
     """
@@ -32,7 +35,8 @@ class ExploreTask:
     point_dist = 1.5
 
     def __init__(self, n_points, is_tree = True, max_allowed_step_ratio = 2.5,
-                angle_divisions = 16, id_size = 5):
+                angle_divisions = 16, id_size = 5,
+                history_size = 2):
         """
         It's not strictly guaranteed that you will get n_points in the graph, 
         as potentially there might be fewer due to the generating grid not being large enough.
@@ -47,9 +51,14 @@ class ExploreTask:
 
         id_size is the length of each "identifier" for a node, each feature of which is uniformly
         randomly selected from [-1, 0, 1]
+
+        history_size determines how many previous frames we give the agent. Frames which don't exist
+        are just set to 0, which uniquely identifies a non-existent frame as each valid frames must
+        have frame[0][0] == 1
         """
         self.action_space = MazeChoice(angle_divisions)
-        self.observation_space = MazeObservation(angle_divisions, id_size)
+        self.observation_space = MazeObservation(history_size, angle_divisions, id_size)
+        self.history_size = history_size
         self.id_size = id_size
 
         map_size = int(math.sqrt(n_points) * self.point_dist * 2)
@@ -58,6 +67,8 @@ class ExploreTask:
                                 n_points,
                                 radius = self.point_dist,
                                 provide_edges = is_tree)
+        assert self.points.shape[0] == n_points # putting this in for safety
+
         self.edge_list = [[] for p in self.points]
         self.point_ids = np.random.randint(-1, 2, size = (n_points, self.id_size), dtype = np.int8)
 
@@ -83,10 +94,6 @@ class ExploreTask:
                 self.edge_list[node_a].append(node_b)
                 self.edge_list[node_b].append(node_a)
         
-        # First coordinate is 1 + action_space.n because
-        # we include the id of the node the agent is on in the
-        # observation
-        self.obs_shape = [self.action_space.n + 1, self.id_size]
         self.end_node = random.randint(0, len(self.points) - 1)
 
         # Figure for rendering plots
@@ -105,15 +112,19 @@ class ExploreTask:
         return max(0, min(angle_index, self.action_space.n - 1))
 
     def _observation(self):
-        obs = np.zeros(self.obs_shape, dtype = np.int8)
-        obs[0] = self.point_ids[self.agent]
+        # obs has time dimension 1
+        obs = np.zeros([1] + self.observation_space.shape[1:], dtype = np.int8)
+        obs[0, 0] = self.point_ids[self.agent]
         agent_p = self.points[self.agent]
         for node_i in self.edge_list[self.agent]:
             angle_index = self._angle_index(node_i)
             # Should not be able to overwrite observations, but no guarantees...
             # If it does, it happens rarely enough as not to matter.
-            obs[angle_index + 1] = self.point_ids[node_i]
-        return obs
+            obs[0, angle_index + 1] = self.point_ids[node_i]
+
+        self.observation_history = np.delete(self.observation_history, 0, 0)
+        self.observation_history = np.append(self.observation_history, obs, axis = 0)
+        return self.observation_history
 
 
     def step(self, action):
@@ -139,9 +150,6 @@ class ExploreTask:
         else:
             info['truncated'] = False
 
-        if done:
-            self.close_render()
-
         return self._observation(), rew, done, info
 
     def reset(self):
@@ -149,6 +157,7 @@ class ExploreTask:
         # agent on random node.
         self.n_steps = 0
         self.agent = random.randint(0, len(self.points) - 1)
+        self.observation_history = np.zeros(self.observation_space.shape, dtype = np.int8)
         while self.agent == self.end_node:
             self.agent = random.randint(0, len(self.points) - 1)
         return self._observation()
@@ -175,11 +184,11 @@ class ExploreTask:
         else:
             self.agent_display.set_xdata(self.points[self.agent, 0])
             self.agent_display.set_ydata(self.points[self.agent, 1])
+        
+        self.fig.suptitle('Step #%d' % self.n_steps)
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
 
-    def close_render(self):
+    def close(self):
         if self.fig:
-            # sleep so user can see outcome
-            time.sleep(1.0)
             plt.close(fig = self.fig)

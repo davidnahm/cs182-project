@@ -4,6 +4,7 @@ import loggy
 import tensorflow as tf
 import gym
 import numpy as np
+import time
 
 class CartPoleDummySchedule:
     """
@@ -148,6 +149,11 @@ class VanillaPolicy:
             if done:
                 break
         
+        if self.render and self.n_episodes % self.render_mod == 0:
+            env.render()
+            time.sleep(1) # so that we have time to see the end
+            env.close()
+
         info = {
             'n_useless_actions': n_useless_actions,
             'n_steps': len(observations)
@@ -224,12 +230,12 @@ if __name__ == '__main__':
                                                      *args, **varargs)),
         env_creator = ExploreCreatorSchedule(),
         lr_schedule = lambda t: 5e-3,
-        min_observations_per_step = 1000,
+        min_observations_per_step = 5000,
         log = log,
         gamma = 1.0,
         fp_observations = False,
-        # render = True,
-        render_mod = 256
+        render = True,
+        render_mod = 1024
     )
-    vp.optimize(100000)
+    vp.optimize(2000000)
     log.close()
