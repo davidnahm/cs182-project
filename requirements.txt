@@ -3,6 +3,7 @@
 # platform: linux-64
 absl-py=0.7.1=pypi_0
 astor=0.7.1=pypi_0
+atari-py=0.1.7=pypi_0
 ca-certificates=2019.1.23=0
 certifi=2018.8.24=py35_1
 chardet=3.0.4=pypi_0
@@ -44,6 +45,7 @@ tensorflow-estimator=1.13.0=pypi_0
 tensorflow-gpu=1.13.1=pypi_0
 termcolor=1.1.0=pypi_0
 tk=8.6.8=hbc83047_0
+tqdm=4.31.1=pypi_0
 urllib3=1.24.2=pypi_0
 werkzeug=0.15.2=pypi_0
 wheel=0.31.1=py35_0

@@ -59,7 +59,7 @@ class ExploreTask:
         are just set to 0, which uniquely identifies a non-existent frame as each valid frames must
         have frame[0][0] == 1
 
-        place_agent_far_from_dest will use DFS to find the distances for each node from the end node,
+        place_agent_far_from_dest will use BFS to find the distances for each node from the end node,
         treating all edges as the same length as the actual distance does not matter. It will then take a
         random node more than MAX_DISTANCE * agent_placement_prop away from the end node and place the
         agent there. Turning this option on helps make random actions less likely to finish the task,
