@@ -64,8 +64,8 @@ class VanillaPolicyGAE(VanillaPolicy):
 
         while steps < total_steps:
             path = self.sample_trajectories()
-            _, _, approximate_entropy = self.session.run(
-                [self.update_op, self.update_value_op, self.approx_entropy_op],
+            _, _, value_loss, approximate_entropy = self.session.run(
+                [self.update_op, self.update_value_op, self.value_loss, self.approx_entropy_op],
                 feed_dict = {
                     self.obs_placeholder: path['observations'],
                     self.action_placeholder: path['actions'],
@@ -81,7 +81,8 @@ class VanillaPolicyGAE(VanillaPolicy):
                 'average reward': np.mean(path['reward_totals']),
                 'std of reward': np.std(path['reward_totals']),
                 'approximate action entropy': approximate_entropy,
-                'simulation steps': steps
+                'simulation steps': steps,
+                'value loss': value_loss
             }
             self.env_creator.add_logging_data(log_data)
 
@@ -90,7 +91,7 @@ class VanillaPolicyGAE(VanillaPolicy):
 
 
 if __name__ == '__main__':
-    log = loggy.Log("test")
+    log = loggy.Log("test-gae")
     vpgae = VanillaPolicyGAE(
         model = (lambda *args, **varargs: models.mlp(n_layers = 2,
                                                      hidden_size = 64,
@@ -101,8 +102,8 @@ if __name__ == '__main__':
                                                                 *args, **varargs), axis = 1)),
         # env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 2),
         env_creator = schedules.CartPoleDummySchedule(),
-        lr_schedule = (lambda t: 5e-3),
-        value_lr_schedule = (lambda t: 5e-3),
+        lr_schedule = (lambda t: 3e-4),
+        value_lr_schedule = (lambda t: 1e-3),
         lambda_gae = .95,
         min_observations_per_step = 1000,
         log = log,
@@ -112,5 +113,5 @@ if __name__ == '__main__':
         render_mod = 128
     )
     vpgae.initialize_variables()
-    vpgae.optimize(2000000)
+    vpgae.optimize(200000)
     log.close()

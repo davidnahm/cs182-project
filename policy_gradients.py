@@ -212,14 +212,14 @@ class VanillaPolicy:
             self.log.print_step()
 
 if __name__ == '__main__':
-    log = loggy.Log("test")
+    log = loggy.Log("test-vanilla")
     vp = VanillaPolicy(
         model = (lambda *args, **varargs: models.mlp(n_layers = 2,
                                                      hidden_size = 64,
                                                      *args, **varargs)),
         # env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 2),
         env_creator = schedules.CartPoleDummySchedule(),
-        lr_schedule = lambda t: 5e-3,
+        lr_schedule = lambda t: 3e-4,
         min_observations_per_step = 1000,
         log = log,
         gamma = 1.0,
@@ -228,5 +228,5 @@ if __name__ == '__main__':
         render_mod = 128
     )
     vp.initialize_variables()
-    vp.optimize(2000000)
+    vp.optimize(200000)
     log.close()
