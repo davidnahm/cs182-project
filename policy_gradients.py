@@ -212,18 +212,18 @@ class VanillaPolicy:
             self.log.print_step()
 
 if __name__ == '__main__':
-    log = loggy.Log("test-vanilla")
+    log = loggy.Log("maze-vanilla")
     vp = VanillaPolicy(
         model = (lambda *args, **varargs: models.mlp(n_layers = 2,
                                                      hidden_size = 64,
                                                      *args, **varargs)),
-        # env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 2),
-        env_creator = schedules.CartPoleDummySchedule(),
-        lr_schedule = lambda t: 3e-4,
+        env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 2),
+        # env_creator = schedules.CartPoleDummySchedule(),
+        lr_schedule = lambda t: 1e-3,
         min_observations_per_step = 1000,
         log = log,
         gamma = 1.0,
-        fp_observations = True,
+        fp_observations = False,
         render = False,
         render_mod = 128
     )

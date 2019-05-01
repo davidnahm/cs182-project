@@ -65,5 +65,5 @@ class ExploreCreatorSchedule:
         return ExploreTask(self.current_size, **self.explore_args)
 
     def add_logging_data(self, data):
-        data['current maze size'] = self.env_creator.current_size
-        data['current environment confidence'] = self.env_creator.current_prop_estimate
+        data['current maze size'] = self.current_size
+        data['current environment confidence'] = self.current_prop_estimate

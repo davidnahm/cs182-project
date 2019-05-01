@@ -12,9 +12,11 @@ import pickle
 import matplotlib.pyplot as plt
 import glob
 import numpy as np
+from datetime import datetime
+from scipy.ndimage.filters import gaussian_filter1d
 
-time_fmt_str = '%Y-%m-%dT%H:%M:%S'
-time_str_len = len(time.strftime(time_fmt_str, time.localtime()))
+_time_fmt_str = '%Y-%m-%d_%H:%M:%S.%f'
+_time_str_len = len(datetime.utcnow().strftime(_time_fmt_str))
 
 class Grapher:
     # From http://www.cookbook-r.com/Graphs/Colors_(ggplot2)/
@@ -26,7 +28,7 @@ class Grapher:
 
     def _get_matches(self, name):
         match = os.path.join(self.parent_dir, name + '-*')
-        return [s for s in glob.glob(match) if len(os.path.basename(s)) == 1 + len(name) + time_str_len]
+        return [s for s in glob.glob(match) if len(os.path.basename(s)) == 1 + len(name) + _time_str_len]
 
     def add_all(self, name):
         self.names.extend(self._get_matches(name))
@@ -34,7 +36,8 @@ class Grapher:
     def add_last(self, name):
         self.names.append(sorted(self._get_matches(name))[-1])
 
-    def plot(self, y_name, x_name = '_n', match_name_colors = True):
+    def plot(self, y_name, x_name = '_n', match_name_colors = True,
+                smooth_sigma = 2.0, **plotargs):
         palette = {}
         palette_i = 0
         for name in self.names:
@@ -45,18 +48,21 @@ class Grapher:
                     if x_name in step and y_name in step:
                         xs.append(step[x_name])
                         ys.append(step[y_name])
+                if smooth_sigma > 0.0:
+                    ys = gaussian_filter1d(ys, sigma = smooth_sigma)
                 if match_name_colors:
-                    basename = os.path.basename(name)[:-(1 + time_str_len)]
+                    basename = os.path.basename(name)[:-(1 + _time_str_len)]
                     if basename not in palette:
                         palette[basename] = palette_i
                         palette_i += 1
                         if palette_i >= len(self.colorblind_friendly):
                             self.colorblind_friendly.append(np.random.rand(3,1))
-                        plt.plot(xs, ys, label = basename, color = self.colorblind_friendly[palette[basename]])
+                        plt.plot(xs, ys, label = basename, color = self.colorblind_friendly[palette[basename]],
+                                    **plotargs)
                     else:
-                        plt.plot(xs, ys, color = self.colorblind_friendly[palette[basename]])
+                        plt.plot(xs, ys, color = self.colorblind_friendly[palette[basename]], **plotargs)
                 else:
-                    plt.plot(xs, ys, label = os.path.basename(name))
+                    plt.plot(xs, ys, label = os.path.basename(name), **plotargs)
         
         plt.legend()
         plt.show()
@@ -78,7 +84,7 @@ class Log:
         self.last_saved = self.start_time
 
         self.name = run_name
-        self.name_full = run_name + '-' + time.strftime(time_fmt_str, time.localtime(self.start_time))
+        self.name_full = run_name + '-' + datetime.fromtimestamp(self.start_time).strftime(_time_fmt_str)
         self.parent_dir = parent_dir
         self.created_directory = False
 
@@ -128,6 +134,9 @@ class Log:
 
 if __name__ == '__main__':
     g = Grapher()
-    g.add_all('test-gae')
-    g.add_all('test-vanilla')
-    g.plot('average reward', 'simulation steps')
+    g.add_all('maze-gae')
+    g.add_all('maze-vanilla')
+    g.add_last('totally-random-actions')
+    g.add_last('valid-random-actions')
+    g.add_last('random-unseen-actions')
+    g.plot('average reward', 'simulation steps', smooth_sigma = 0.0)
