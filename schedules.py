@@ -1,14 +1,14 @@
 from discrete_maze.maze import ExploreTask
 import gym
 
-class CartPoleDummySchedule:
+class DummyGymSchedule:
     """
     This class is just meant to be substituted in for ExploreCreatorSchedule
     so that you can check that Policy Gradients works.
     """
 
-    def __init__(self):
-        self.env = gym.make('CartPole-v0')
+    def __init__(self, name):
+        self.env = gym.make(name)
         self.env_type_will_change = False
 
     def update(self, done, info):

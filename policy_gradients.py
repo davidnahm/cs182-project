@@ -5,6 +5,7 @@ import gym
 import numpy as np
 import time
 import schedules
+import argparse
 
 class VanillaPolicy:
     def __init__(self, model,
@@ -57,9 +58,11 @@ class VanillaPolicy:
         self.approx_entropy_op = -tf.reduce_mean(self.logprob_op, name = "approximate_entropy")
         self.approx_kl_divergence_op = -tf.reduce_mean(self.logprob_sample_placeholder - self.logprob_op)
 
-        self.policy_value_op = tf.reduce_mean(self.logprob_op * self.adv_placeholder, name = "policy_value")
+        self.policy_value_op = self._create_objective()
         self.update_op = tf.train.AdamOptimizer(self.lr_placeholder).minimize(-self.policy_value_op)
 
+    def _create_objective(self):
+        return tf.reduce_mean(self.logprob_op * self.adv_placeholder, name = "policy_value")
 
     def initialize_variables(self):
         tf_config = tf.ConfigProto()
@@ -211,22 +214,29 @@ class VanillaPolicy:
             self.log.step(log_data)
             self.log.print_step()
 
+
 if __name__ == '__main__':
-    log = loggy.Log("maze-vanilla")
+    argument_parser = argparse.ArgumentParser(description = "Train a network to navigate a discrete maze.")
+    argument_parser.add_argument("--history-size", default = 1, type = int,
+                help = "Number of previous frames to give the network.")
+    options = argument_parser.parse_args()
+
+
+    log = loggy.Log("acrobot-vanilla")
     vp = VanillaPolicy(
         model = (lambda *args, **varargs: models.mlp(n_layers = 2,
                                                      hidden_size = 64,
                                                      *args, **varargs)),
-        env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 2),
-        # env_creator = schedules.CartPoleDummySchedule(),
-        lr_schedule = lambda t: 1e-3,
-        min_observations_per_step = 1000,
+        # env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = options.history_size),
+        env_creator = schedules.DummyGymSchedule('Acrobot-v1'),
+        lr_schedule = lambda t: 1e-4,
+        min_observations_per_step = 5000,
         log = log,
-        gamma = 1.0,
-        fp_observations = False,
+        gamma = 0.99,
+        fp_observations = True,
         render = False,
-        render_mod = 128
+        render_mod = 16
     )
     vp.initialize_variables()
-    vp.optimize(200000)
+    vp.optimize(500000)
     log.close()

@@ -16,7 +16,7 @@ class MazeChoice:
 
 class MazeObservation:
     def __init__(self, history_size, angle_divisions, id_size):
-        # Second coordinate is angle_divisions + 1because
+        # Second coordinate is angle_divisions + 1 because
         # we include the id of the node the agent is on in the
         # observation
         self.shape = [history_size, angle_divisions + 1, id_size]
@@ -39,7 +39,9 @@ class ExploreTask:
                 angle_divisions = 16, id_size = 5,
                 history_size = 1,
                 place_agent_far_from_dest = True,
-                agent_placement_prop = 0.8):
+                agent_placement_prop = 0.8,
+                only_finished_reward = True,
+                scale_reward_by_difficulty = True):
         """
         It's not strictly guaranteed that you will get n_points in the graph, 
         as potentially there might be fewer due to the generating grid not being large enough.
@@ -66,6 +68,14 @@ class ExploreTask:
         and helps make the gradients more meaningful as otherwise some environments may place the agent
         too close to the destination node, falsely giving the sense that that particular agent's behavior
         was somehow better. This also doesn't seem to slow down initialization too much.
+
+        only_finished_reward will just give a reward of 1.0 when the destination is reached, and will not give
+        negative rewards.
+
+        scale_reward_by_difficulty will scale the rewards by
+            (average length of random path) / (probability random path will finish)
+        This does increase the time to run .reset() significantly, doubling the time necessary to initialize
+        at around maze size 40.
         """
         self.action_space = MazeChoice(angle_divisions)
         self.observation_space = MazeObservation(history_size, angle_divisions, id_size)
@@ -73,6 +83,8 @@ class ExploreTask:
         self.history_size = history_size
         self.place_agent_far_from_dest = place_agent_far_from_dest
         self.agent_placement_prop = agent_placement_prop
+        self.only_finished_reward = only_finished_reward
+        self.scale_reward_by_difficulty = scale_reward_by_difficulty
 
         map_size = int(math.sqrt(n_points) * self.point_dist * 2)
         self.points, edges = generate_points_blue_noise(map_size,
@@ -116,7 +128,7 @@ class ExploreTask:
 
         # We allow the agent to go to each node approximately max_allowed_step_ratio
         # times before terminating the session.
-        self.max_allowed_steps = max_allowed_step_ratio * self.points.shape[0]
+        self.max_allowed_steps = int(max_allowed_step_ratio * self.points.shape[0])
 
         self.placement_candidates = None
 
@@ -159,7 +171,11 @@ class ExploreTask:
         info['correct_direction'] = matched
 
         done = self.agent == self.end_node
-        rew = 0.0 if done else -1.0
+
+        if not self.only_finished_reward:
+            rew = 0.0 if done else -1 / self.difficulty
+        else:
+            rew = self.difficulty if done else 0.0
 
         if self.n_steps > self.max_allowed_steps:
             done = True
@@ -198,9 +214,41 @@ class ExploreTask:
                             visited[node_b] = True
                             q.append(node_b)
                 cutoff_dist = int(max_dist * self.agent_placement_prop)
-                self.placement_candidates = [i for i, d in enumerate(distances) if d >= cutoff_dist]
+
+                # If cutoff_dist == 1 we have to check it's not the end node
+                self.placement_candidates = [i for i, d in enumerate(distances) if d >= cutoff_dist and i != self.end_node]
 
             self.agent = random.choice(self.placement_candidates)
+        
+        if self.scale_reward_by_difficulty:
+            n_points = self.points.shape[0]
+
+            end_ls = []
+            end_ps = []
+            p_acc = 1.0
+
+            probabilities = [0.0 for i in range(n_points)]
+            probabilities[self.agent] = 1.0
+            for step_i in range(self.max_allowed_steps):
+                new_probabilities = [0.0 for i in range(n_points)]
+                for node_a, prob in enumerate(probabilities):
+                    accumulate = prob / len(self.edge_list[node_a])
+                    if accumulate == 0.0:
+                        continue
+                    for node_b in self.edge_list[node_a]:
+                        new_probabilities[node_b] += accumulate
+                probabilities = new_probabilities
+
+                cur_p = probabilities[self.end_node]
+                if cur_p != 0.0:
+                    end_ls.append(step_i + 1)
+                    end_ps.append(p_acc * cur_p)
+                    p_acc *= 1 - cur_p
+            weighted_l = sum([l * p for l,p in zip(end_ls, end_ps)])
+            p_inv = 1 / sum(end_ps)
+            self.difficulty = weighted_l * p_inv * p_inv
+        else:
+            self.difficulty = 1.0
 
         return self._observation()
 

@@ -33,13 +33,11 @@ class Grapher:
     def add_all(self, name):
         self.names.extend(self._get_matches(name))
 
-    def add_last(self, name):
-        self.names.append(sorted(self._get_matches(name))[-1])
+    def add_last(self, name, k = 1):
+        self.names.extend(sorted(self._get_matches(name))[-k:])
 
-    def plot(self, y_name, x_name = '_n', match_name_colors = True,
-                smooth_sigma = 2.0, **plotargs):
-        palette = {}
-        palette_i = 0
+    def _get_data(self, y_name, x_name, smooth_sigma):
+        all_xs, all_ys = [], []
         for name in self.names:
             with open(os.path.join(name, 'log.pickle'), 'rb') as pickle_f:
                 table = pickle.load(pickle_f)
@@ -50,22 +48,48 @@ class Grapher:
                         ys.append(step[y_name])
                 if smooth_sigma > 0.0:
                     ys = gaussian_filter1d(ys, sigma = smooth_sigma)
-                if match_name_colors:
-                    basename = os.path.basename(name)[:-(1 + _time_str_len)]
-                    if basename not in palette:
-                        palette[basename] = palette_i
-                        palette_i += 1
-                        if palette_i >= len(self.colorblind_friendly):
-                            self.colorblind_friendly.append(np.random.rand(3,1))
-                        plt.plot(xs, ys, label = basename, color = self.colorblind_friendly[palette[basename]],
+                all_xs.append(xs)
+                all_ys.append(ys)
+        return all_xs, all_ys
+
+    def plot(self, y_name, x_name = '_n', match_name_colors = True,
+                smooth_sigma = 2.0, update_t = 1.0, **plotargs):
+        palette = {}
+        palette_i = 0
+        plt.ion()
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        lines = []
+
+        for name, xs, ys in zip(self.names, *self._get_data(y_name, x_name, smooth_sigma)):
+            if match_name_colors:
+                basename = os.path.basename(name)[:-(1 + _time_str_len)]
+                if basename not in palette:
+                    palette[basename] = palette_i
+                    palette_i += 1
+                    if palette_i >= len(self.colorblind_friendly):
+                        self.colorblind_friendly.append(np.random.rand(3,))
+                    line, = ax.plot(xs, ys, label = basename, color = self.colorblind_friendly[palette[basename]],
                                     **plotargs)
-                    else:
-                        plt.plot(xs, ys, color = self.colorblind_friendly[palette[basename]], **plotargs)
                 else:
-                    plt.plot(xs, ys, label = os.path.basename(name), **plotargs)
+                    line, = ax.plot(xs, ys, color = self.colorblind_friendly[palette[basename]], **plotargs)
+            else:
+                line, = ax.plot(xs, ys, label = os.path.basename(name), **plotargs)
+            lines.append(line)
+        ax.legend()
         
-        plt.legend()
-        plt.show()
+        last_update = time.time()
+        # Bad practice but there's no "wait for close" function
+        while plt.fignum_exists(fig.number):
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+            time.sleep(0.1)
+            if time.time() - last_update > update_t:
+                last_update = time.time()
+                for line, xs, ys in zip(lines, *self._get_data(y_name, x_name, smooth_sigma)):
+                    line.set_xdata(xs)
+                    line.set_ydata(ys)
+
 
 class Log:
     def __init__(self, run_name, parent_dir = './log', autosave_freq = 30,
@@ -127,6 +151,7 @@ class Log:
     def print_step(self):
         assert self.step_n > 0, 'Must step before printing a step.'
         val = [[k, v] for k, v in self.table[-1].items() if k != '_extra_info']
+        val = sorted(val, key = lambda kv: kv[0])
         print(tabulate(val, tablefmt = 'fancy_grid', numalign = 'right'))
 
     def close(self):
@@ -134,9 +159,34 @@ class Log:
 
 if __name__ == '__main__':
     g = Grapher()
-    g.add_all('maze-gae')
-    g.add_all('maze-vanilla')
-    g.add_last('totally-random-actions')
-    g.add_last('valid-random-actions')
-    g.add_last('random-unseen-actions')
-    g.plot('average reward', 'simulation steps', smooth_sigma = 0.0)
+    # g.add_last('maze-gae', k = 5)
+    # g.add_last('maze-vanilla', k = 5)
+    # g.add_all('maze-ppo-gae')
+    # g.add_all('maze1-no-id-ppo-gae')
+    # g.add_all('maze2-no-id-ppo-gae')
+    # g.add_all('maze1-no-id-only-positive-ppo-gae')
+    # g.add_all('maze1-no-id-only-positive-difficulty-scaled-ppo-gae')
+    g.add_all('maze1-no-id-only-positive-difficulty-scaled-ppo')
+    # g.add_all('maze3-ppo-gae')
+    # g.add_last('totally-random-actions')
+    # g.add_last('valid-random-actions')
+    # g.add_last('random-unseen-actions')
+    # g.plot('value loss', 'simulation steps', smooth_sigma = 0.0)
+    # g.plot('average reward', 'simulation steps', smooth_sigma = 0.0)
+    # g.plot('average reward', '_elapsed_time', smooth_sigma = 0.0)
+    # g.plot('current maze size', 'simulation steps', smooth_sigma = 0.0, match_name_colors = False)
+    g.plot('current environment confidence', 'simulation steps', smooth_sigma = 0.0, match_name_colors = False)
+
+    # g = Grapher()
+    # g.add_all('lunar-gae')
+    # g.plot('value loss', 'simulation steps', smooth_sigma = 0.0, match_name_colors = False)
+    # g.add_all('lunar-vanilla')
+    # g.plot('average reward', 'simulation steps', smooth_sigma = 0.0)
+
+    # g = Grapher()
+    # g.add_all('acrobot-ppo-gae')
+    # g.add_last('acrobot-gae', 3)
+    # g.plot('value loss', 'simulation steps', smooth_sigma = 0.0, match_name_colors = False)
+    # g.add_last('acrobot-vanilla', 3)
+    # g.add_all('acrobot-ppo')
+    # g.plot('average reward', '_elapsed_time', smooth_sigma = 0.0)

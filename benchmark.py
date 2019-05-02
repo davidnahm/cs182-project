@@ -4,26 +4,26 @@ from discrete_maze.maze import ExploreTask
 
 for size in [3, 5, 10, 20, 50, 100]:
     start = time.time()
-    env = ExploreTask(size, is_tree = True)
+    env = ExploreTask(size, is_tree = True, scale_reward_by_difficulty = False)
     env.reset()
     for i in range(10000):
         env.step(env.action_space.sample())
     print("time for 10000 steps for tree maze of size %d: %f" % (size, time.time() - start))
     start = time.time()
     for i in range(100):
-        env = ExploreTask(size, is_tree = True)
+        env = ExploreTask(size, is_tree = True, scale_reward_by_difficulty = False)
         env.reset()
     print("time to initialize 100x tree mazes of size %d: %f" % (size, time.time() - start))
 
     start = time.time()
-    env = ExploreTask(size, is_tree = False)
+    env = ExploreTask(size, is_tree = False, scale_reward_by_difficulty = False)
     env.reset()
     for i in range(10000):
         env.step(env.action_space.sample())
     print("time for 10000 steps for delaunay maze of size %d: %f" % (size, time.time() - start))
     start = time.time()
     for i in range(100):
-        env = ExploreTask(size, is_tree = False)
+        env = ExploreTask(size, is_tree = False, scale_reward_by_difficulty = False)
         env.reset()
     print("time to initialize 100x delaunay mazes of size %d: %f" % (size, time.time() - start))
 
@@ -31,7 +31,10 @@ for size in [3, 5, 10, 20, 50, 100]:
     for i in range(100):
         env = ExploreTask(size, is_tree = False, place_agent_far_from_dest = False)
         env.reset()
-    print("time to initialize 100x delaunay mazes (place_agent_far_from_dest=False) of size %d: %f" % (size, time.time() - start))
+    print("time to initialize 100x delaunay mazes")
+    print("\tplace_agent_far_from_dest=False")
+    print("\tscale_reward_by_difficulty=true")
+    print("\tof size %d: %f" % (size, time.time() - start))
 
 for history_size in [1, 2, 4, 8, 16]:
     start = time.time()

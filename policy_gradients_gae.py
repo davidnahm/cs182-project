@@ -8,8 +8,13 @@ import schedules
 # Implements GAE-Lambda with value estimator. This is based off of
 # spinningup's implementation
 class VanillaPolicyGAE(VanillaPolicy):
-    def __init__(self, value_model, value_lr_schedule, lambda_gae, *args, **varargs):
-        super().__init__(*args, **varargs)
+    def __init__(self, value_model, value_lr_schedule, lambda_gae,
+                 model, env_creator, lr_schedule,
+                 min_observations_per_step,
+                 log, gamma, fp_observations, render = False, render_mod = 16):
+        super().__init__(model, env_creator, lr_schedule,
+                         min_observations_per_step,
+                         log, gamma, fp_observations, render, render_mod)
 
         self.value_lr_schedule = value_lr_schedule
         self.lambda_gae = lambda_gae
@@ -91,7 +96,7 @@ class VanillaPolicyGAE(VanillaPolicy):
 
 
 if __name__ == '__main__':
-    log = loggy.Log("maze-gae")
+    log = loggy.Log("acrobot-gae")
     vpgae = VanillaPolicyGAE(
         model = (lambda *args, **varargs: models.mlp(n_layers = 2,
                                                      hidden_size = 64,
@@ -100,18 +105,18 @@ if __name__ == '__main__':
                                                                 hidden_size = 64,
                                                                 out_size = 1,
                                                                 *args, **varargs), axis = 1)),
-        env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 2),
-        # env_creator = schedules.CartPoleDummySchedule(),
-        lr_schedule = (lambda t: 1e-3),
-        value_lr_schedule = (lambda t: 3e-3),
+        # env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 2),
+        env_creator = schedules.DummyGymSchedule('Acrobot-v1'),
+        lr_schedule = (lambda t: 1e-4),
+        value_lr_schedule = (lambda t: 3e-4),
         lambda_gae = .95,
-        min_observations_per_step = 1000,
+        min_observations_per_step = 5000,
         log = log,
-        gamma = 1.0,
-        fp_observations = False,
+        gamma = 0.99,
+        fp_observations = True,
         render = False,
         render_mod = 128
     )
     vpgae.initialize_variables()
-    vpgae.optimize(200000)
+    vpgae.optimize(500000)
     log.close()
