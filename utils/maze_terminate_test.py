@@ -75,14 +75,14 @@ def test_random_actions(creation_schedule, Chooser, samples, log = None):
 # print("\nTesting for random valid actions:")
 # test_random_actions(ECS(is_tree = False, place_agent_far_from_dest = False), RandomValidAgent, 200000)
 
-print("Testing for choosing random unseen nodes + placing far from destination:")
-log = Log("random-unseen-actions")
-test_random_actions(ECS(is_tree = False, place_agent_far_from_dest = True), RandomNotVisitedAgent, 500000, log)
+print("Testing for choosing random unseen nodes + placing far from destination + tree:")
+log = Log("random-unseen-actions-tree")
+test_random_actions(ECS(is_tree = True, place_agent_far_from_dest = True), RandomNotVisitedAgent, 500000, log)
 log.close()
 
-print("Testing for random valid actions + placing far from destination:")
-log = Log("valid-random-actions")
-test_random_actions(ECS(is_tree = False, place_agent_far_from_dest = True), RandomValidAgent, 500000, log)
+print("Testing for random valid actions + placing far from destination + tree:")
+log = Log("valid-random-actions-tree")
+test_random_actions(ECS(is_tree = True, place_agent_far_from_dest = True), RandomValidAgent, 500000, log)
 log.close()
 
 # print("Testing for totally random actions + placing far from destination:")

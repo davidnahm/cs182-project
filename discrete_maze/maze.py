@@ -20,6 +20,7 @@ class MazeObservation:
         # we include the id of the node the agent is on in the
         # observation
         self.shape = [history_size, angle_divisions + 1, id_size]
+        self.dtype = np.int8
 
 class ExploreTask:
     """
@@ -34,14 +35,16 @@ class ExploreTask:
     Observations are numpy arrays of dtype int8.
     """
     point_dist = 1.5
+    reward_types = ['distance', 'only_finished', 'penalties', 'penalty+finished']
 
     def __init__(self, n_points, is_tree = True, max_allowed_step_ratio = 2.5,
                 angle_divisions = 16, id_size = 5,
                 history_size = 1,
                 place_agent_far_from_dest = True,
                 agent_placement_prop = 0.8,
-                only_finished_reward = True,
-                scale_reward_by_difficulty = True):
+                reward_type = 'penalty+finished',
+                scale_reward_by_difficulty = True,
+                grid_maze = False):
         """
         It's not strictly guaranteed that you will get n_points in the graph, 
         as potentially there might be fewer due to the generating grid not being large enough.
@@ -52,7 +55,8 @@ class ExploreTask:
 
         angle_divisions is the number of angles along which we sample for edges in an observation,
         as well as the size of the action space. Making this finer will help give more positioning
-        information, but will be more expensive.
+        information, but will be more expensive. If grid_maze is set to True this is overridden
+        to be 4.
 
         id_size is the length of each "identifier" for a node, each feature of which is uniformly
         randomly selected from [-1, 0, 1]
@@ -69,21 +73,38 @@ class ExploreTask:
         too close to the destination node, falsely giving the sense that that particular agent's behavior
         was somehow better. This also doesn't seem to slow down initialization too much.
 
-        only_finished_reward will just give a reward of 1.0 when the destination is reached, and will not give
-        negative rewards.
+        reward_type alters the way this environment doles out rewards.
+            * only_finished: will just give a reward of 1.0 when the destination is reached, and will not give
+              negative rewards.
+            * penalities: will output -1.0 every time step the goal has not been reached
+            * distance: will output 1.0 if agent gets closer to the goal, and -1.0 if agent remains same distance
+              or gets further away
+            * penalty+finished: will output 1.0 when agent reaches goal, -.01 every time step, and an extra -.01
+              every time it performs an invalid action. This is based on the SNAIL paper's maze task reward shaping.
 
         scale_reward_by_difficulty will scale the rewards by
             (average length of random path) / (probability random path will finish)
         This does increase the time to run .reset() significantly, doubling the time necessary to initialize
         at around maze size 40.
+
+        grid_maze will make a random maze on integer coordinates, with edges only going up, down, left, or right.
+            This reduces angle_divisions to 4.
         """
+
+        self.grid_maze = grid_maze
+        if grid_maze:
+            angle_divisions = 4
+
         self.action_space = MazeChoice(angle_divisions)
         self.observation_space = MazeObservation(history_size, angle_divisions, id_size)
         self.id_size = id_size
         self.history_size = history_size
         self.place_agent_far_from_dest = place_agent_far_from_dest
         self.agent_placement_prop = agent_placement_prop
-        self.only_finished_reward = only_finished_reward
+
+        assert reward_type in self.reward_types, "Reward type passed in to ExploreTask not valid."
+        self.reward_type = reward_type
+
         self.scale_reward_by_difficulty = scale_reward_by_difficulty
 
         map_size = int(math.sqrt(n_points) * self.point_dist * 2)
@@ -130,7 +151,7 @@ class ExploreTask:
         # times before terminating the session.
         self.max_allowed_steps = int(max_allowed_step_ratio * self.points.shape[0])
 
-        self.placement_candidates = None
+        self.distances = None
 
     def _angle_index(self, node_i):
         point = self.points[node_i]
@@ -159,6 +180,8 @@ class ExploreTask:
     def step(self, action):
         self.n_steps += 1
         info = {}
+        if self.reward_type == 'distance':
+            old_distance = self.distances[self.agent]
 
         # searching if one of the neighbors is in the direction
         # of the action, and moving to that location if it is.
@@ -172,10 +195,17 @@ class ExploreTask:
 
         done = self.agent == self.end_node
 
-        if not self.only_finished_reward:
+        if self.reward_type == 'penalties':
             rew = 0.0 if done else -1 / self.difficulty
-        else:
+        elif self.reward_type == 'only_finished':
             rew = self.difficulty if done else 0.0
+        elif self.reward_type == 'penalty+finished':
+            rew = self.difficulty if done else -.01 / self.difficulty
+            if not matched:
+                rew -= .01 / self.difficulty
+        else:
+            ddist = self.distances[self.agent] - old_distance
+            rew = (1 / self.difficulty) if ddist < 0 else (-1 / self.difficulty)
 
         if self.n_steps > self.max_allowed_steps:
             done = True
@@ -193,31 +223,30 @@ class ExploreTask:
         self.n_steps = 0
         self.observation_history = np.zeros(self.observation_space.shape, dtype = np.int8)
 
+        if self.place_agent_far_from_dest or self.reward_type == 'distance' and not self.distances:
+            q = deque([self.end_node])
+            self.distances = [None for _ in range(self.points.shape[0])]
+            visited = [False for _ in range(self.points.shape[0])]
+            self.distances[self.end_node] = 0
+            visited[self.end_node] = True
+            max_dist = 0
+            while len(q) > 0:
+                node_a = q.popleft()
+                for node_b in self.edge_list[node_a]:
+                    if not visited[node_b]:
+                        self.distances[node_b] = 1 + self.distances[node_a]
+                        max_dist = max(max_dist, self.distances[node_b])
+                        visited[node_b] = True
+                        q.append(node_b)
+
         if not self.place_agent_far_from_dest:
             self.agent = random.randint(0, len(self.points) - 1)
             while self.agent == self.end_node:
                 self.agent = random.randint(0, len(self.points) - 1)
         else:
-            if not self.placement_candidates:
-                q = deque([self.end_node])
-                distances = [None for _ in range(self.points.shape[0])]
-                visited = [False for _ in range(self.points.shape[0])]
-                distances[self.end_node] = 0
-                visited[self.end_node] = True
-                max_dist = 0
-                while len(q) > 0:
-                    node_a = q.popleft()
-                    for node_b in self.edge_list[node_a]:
-                        if not visited[node_b]:
-                            distances[node_b] = 1 + distances[node_a]
-                            max_dist = max(max_dist, distances[node_b])
-                            visited[node_b] = True
-                            q.append(node_b)
-                cutoff_dist = int(max_dist * self.agent_placement_prop)
-
-                # If cutoff_dist == 1 we have to check it's not the end node
-                self.placement_candidates = [i for i, d in enumerate(distances) if d >= cutoff_dist and i != self.end_node]
-
+            cutoff_dist = int(max_dist * self.agent_placement_prop)
+            # If cutoff_dist == 1 we have to check it's not the end node
+            self.placement_candidates = [i for i, d in enumerate(self.distances) if d >= cutoff_dist and i != self.end_node]
             self.agent = random.choice(self.placement_candidates)
         
         if self.scale_reward_by_difficulty:
