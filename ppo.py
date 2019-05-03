@@ -9,12 +9,12 @@ import loggy
 class PPO(VanillaPolicy):
     def __init__(self, clip_ratio, max_policy_steps, max_kl,
                  model, env_creator, lr_schedule, min_observations_per_step,
-                 log, gamma, fp_observations, render=False, render_mod=16):
+                 log, gamma, render=False, render_mod=16):
         self.clip_ratio = clip_ratio
         self.max_policy_steps = max_policy_steps
         self.max_kl = max_kl
         super().__init__(model, env_creator, lr_schedule, min_observations_per_step,
-                         log, gamma, fp_observations, render=render, render_mod=render_mod)
+                         log, gamma, render=render, render_mod=render_mod)
 
     # From the spinningup implementation
     def _create_objective(self):
@@ -42,9 +42,7 @@ class PPO(VanillaPolicy):
                     feed_dict = feed
                 )
 
-                # TODO: should this really be an absolute value? Also check in original PPO
-                # KL should not be able to be negative but it is in this approximation.
-                if np.absolute(approximate_kl) > self.max_kl:
+                if approximate_kl > self.max_kl:
                     break
             n_policy_steps = inner_step + 1
 
@@ -68,7 +66,7 @@ class PPO_GAE(VanillaPolicyGAE):
                  value_model, value_lr_schedule, lambda_gae,
                  model, env_creator, lr_schedule,
                  min_observations_per_step,
-                 log, gamma, fp_observations, render = False, render_mod = 16):
+                 log, gamma, render = False, render_mod = 16):
         self.clip_ratio = clip_ratio
         self.max_policy_steps = max_policy_steps
         self.max_val_steps = max_val_steps
@@ -76,7 +74,7 @@ class PPO_GAE(VanillaPolicyGAE):
         super().__init__(value_model, value_lr_schedule, lambda_gae,
                          model, env_creator, lr_schedule,
                          min_observations_per_step,
-                         log, gamma, fp_observations, render=render, render_mod=render_mod)
+                         log, gamma, render=render, render_mod=render_mod)
 
     # From the spinningup implementation
     def _create_objective(self):
@@ -104,7 +102,7 @@ class PPO_GAE(VanillaPolicyGAE):
                     feed_dict = feed
                 )
 
-                if np.absolute(approximate_kl) > self.max_kl:
+                if approximate_kl > self.max_kl:
                     break
             n_policy_steps = inner_step + 1
 
@@ -135,40 +133,28 @@ class PPO_GAE(VanillaPolicyGAE):
             self.log.step(log_data)
             self.log.print_step()
 
-class PPO_GAE_LSTM(PPO_GAE):
-    def __init__(self, clip_ratio, max_policy_steps, max_val_steps, max_kl, value_model, value_lr_schedule,
-                 lambda_gae, model, env_creator, lr_schedule, min_observations_per_step, log, gamma,
-                 fp_observations, render=False, render_mod=16):
-        return super().__init__(clip_ratio, max_policy_steps, max_val_steps, max_kl, value_model,
-                                value_lr_schedule, lambda_gae, model, env_creator, lr_schedule, min_observations_per_step,
-                                log, gamma, fp_observations, render=render, render_mod=render_mod)
-
 if __name__ == '__main__':
-    log = loggy.Log("maze1-no-id-only-positive-difficulty-scaled-ppo", autosave_freq = 10.0)
-    vpgae = PPO(
+    log = loggy.Log("maze-h3-ppo", autosave_freq = 10.0)
+    vpgae = PPO_GAE(
         clip_ratio = 0.2,
         max_policy_steps = 80,
-        # max_val_steps = 80,
-        max_kl = 0.02,
-        model = (lambda *args, **varargs: models.mlp(n_layers = 2,
-                                                     hidden_size = 64,
-                                                     *args, **varargs)),
-        # value_model = (lambda *args, **varargs: tf.squeeze(models.mlp(n_layers = 2,
-        #                                                         hidden_size = 64,
-        #                                                         out_size = 1,
-        #                                                         *args, **varargs), axis = 1)),
-        env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 1, id_size = 1),
-        # env_creator = schedules.DummyGymSchedule('Acrobot-v1'),
-        lr_schedule = (lambda t: 1e-3),
-        min_observations_per_step = 5000,
+        max_val_steps = 80,
+        max_kl = 0.015,
+        model = (lambda *args, **varargs: models.mlp(*args, **varargs)),
+        value_model = (lambda *args, **varargs: tf.squeeze(models.mlp(out_size = 1,
+                                                                *args, **varargs), axis = 1)),
+        env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 3,
+                                        id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
+        # env_creator = schedules.DummyGymSchedule('LunarLander-v2'),
+        lr_schedule = (lambda t: 2e-4),
+        min_observations_per_step = 4000,
         log = log,
-        gamma = 1.0,
-        fp_observations = False,
-        # lambda_gae = .99,
-        # value_lr_schedule = (lambda t: 3e-3),
+        gamma = 0.999,
+        lambda_gae = .97,
+        value_lr_schedule = (lambda t: 2.4e-3),
         render = False,
-        render_mod = 1024
+        render_mod = 256
     )
     vpgae.initialize_variables()
-    vpgae.optimize(500000)
+    vpgae.optimize(200000)
     log.close()

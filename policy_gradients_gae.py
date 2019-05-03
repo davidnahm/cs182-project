@@ -11,10 +11,10 @@ class VanillaPolicyGAE(VanillaPolicy):
     def __init__(self, value_model, value_lr_schedule, lambda_gae,
                  model, env_creator, lr_schedule,
                  min_observations_per_step,
-                 log, gamma, fp_observations, render = False, render_mod = 16):
+                 log, gamma, render = False, render_mod = 16):
         super().__init__(model, env_creator, lr_schedule,
                          min_observations_per_step,
-                         log, gamma, fp_observations, render, render_mod)
+                         log, gamma, render, render_mod)
 
         self.value_lr_schedule = value_lr_schedule
         self.lambda_gae = lambda_gae
@@ -96,27 +96,23 @@ class VanillaPolicyGAE(VanillaPolicy):
 
 
 if __name__ == '__main__':
-    log = loggy.Log("acrobot-gae")
+    log = loggy.Log("maze-h1-pggae")
     vpgae = VanillaPolicyGAE(
-        model = (lambda *args, **varargs: models.mlp(n_layers = 2,
-                                                     hidden_size = 64,
-                                                     *args, **varargs)),
-        value_model = (lambda *args, **varargs: tf.squeeze(models.mlp(n_layers = 2,
-                                                                hidden_size = 64,
-                                                                out_size = 1,
+        model = (lambda *args, **varargs: models.mlp(*args, **varargs)),
+        value_model = (lambda *args, **varargs: tf.squeeze(models.mlp(out_size = 1,
                                                                 *args, **varargs), axis = 1)),
-        # env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 2),
-        env_creator = schedules.DummyGymSchedule('Acrobot-v1'),
-        lr_schedule = (lambda t: 1e-4),
-        value_lr_schedule = (lambda t: 3e-4),
-        lambda_gae = .95,
-        min_observations_per_step = 5000,
+        env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 1,
+                                        id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
+        # env_creator = schedules.DummyGymSchedule('Acrobot-v1'),
+        lr_schedule = (lambda t: 2e-4),
+        value_lr_schedule = (lambda t: 2.4e-3),
+        lambda_gae = .97,
+        min_observations_per_step = 4000,
         log = log,
-        gamma = 0.99,
-        fp_observations = True,
+        gamma = 0.999,
         render = False,
         render_mod = 128
     )
     vpgae.initialize_variables()
-    vpgae.optimize(500000)
+    vpgae.optimize(200000)
     log.close()

@@ -53,7 +53,7 @@ class Grapher:
         return all_xs, all_ys
 
     def plot(self, y_name, x_name = '_n', match_name_colors = True,
-                smooth_sigma = 2.0, update_t = 1.0, **plotargs):
+                smooth_sigma = 0.0, update_t = 1.0, **plotargs):
         palette = {}
         palette_i = 0
         plt.ion()
@@ -146,6 +146,7 @@ class Log:
             pickle.dump(self.table, pickle_f)
 
     def save_variables(self, session):
+        # see https://www.tensorflow.org/guide/saved_model
         self.require_directory() # TODO
 
     def print_step(self):
@@ -159,34 +160,7 @@ class Log:
 
 if __name__ == '__main__':
     g = Grapher()
-    # g.add_last('maze-gae', k = 5)
-    # g.add_last('maze-vanilla', k = 5)
-    # g.add_all('maze-ppo-gae')
-    # g.add_all('maze1-no-id-ppo-gae')
-    # g.add_all('maze2-no-id-ppo-gae')
-    # g.add_all('maze1-no-id-only-positive-ppo-gae')
-    # g.add_all('maze1-no-id-only-positive-difficulty-scaled-ppo-gae')
-    g.add_all('maze1-no-id-only-positive-difficulty-scaled-ppo')
-    # g.add_all('maze3-ppo-gae')
-    # g.add_last('totally-random-actions')
-    # g.add_last('valid-random-actions')
-    # g.add_last('random-unseen-actions')
-    # g.plot('value loss', 'simulation steps', smooth_sigma = 0.0)
-    # g.plot('average reward', 'simulation steps', smooth_sigma = 0.0)
-    # g.plot('average reward', '_elapsed_time', smooth_sigma = 0.0)
-    # g.plot('current maze size', 'simulation steps', smooth_sigma = 0.0, match_name_colors = False)
-    g.plot('current environment confidence', 'simulation steps', smooth_sigma = 0.0, match_name_colors = False)
-
-    # g = Grapher()
-    # g.add_all('lunar-gae')
-    # g.plot('value loss', 'simulation steps', smooth_sigma = 0.0, match_name_colors = False)
-    # g.add_all('lunar-vanilla')
-    # g.plot('average reward', 'simulation steps', smooth_sigma = 0.0)
-
-    # g = Grapher()
-    # g.add_all('acrobot-ppo-gae')
-    # g.add_last('acrobot-gae', 3)
-    # g.plot('value loss', 'simulation steps', smooth_sigma = 0.0, match_name_colors = False)
-    # g.add_last('acrobot-vanilla', 3)
-    # g.add_all('acrobot-ppo')
-    # g.plot('average reward', '_elapsed_time', smooth_sigma = 0.0)
+    g.add_all('maze-h3-ppo')
+    g.add_all('maze-h1-pggae')
+    g.add_all('maze-h3-pggae')
+    g.plot('current maze size')

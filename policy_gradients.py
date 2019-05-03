@@ -11,10 +11,9 @@ class VanillaPolicy:
     def __init__(self, model,
                  env_creator, lr_schedule,
                  min_observations_per_step,
-                 log, gamma, fp_observations, render = False, render_mod = 16):
+                 log, gamma, render = False, render_mod = 16):
         """
         gamma = our discount factor
-        fp_observations = whether observations come as floating point (fp32). If they don't, we cast from int8.
         """
         self.env_creator = env_creator
         self.lr_schedule = lr_schedule
@@ -30,6 +29,7 @@ class VanillaPolicy:
         # This shouldn't be too slow.
         dummy_env = env_creator.new_env()
 
+        fp_observations = not np.issubdtype(dummy_env.observation_space.dtype, np.floating)
         obs_dtype = tf.float32 if fp_observations else tf.int8
         self.obs_placeholder = tf.placeholder(obs_dtype,
                                               shape = [None] + list(dummy_env.observation_space.shape),
@@ -56,7 +56,7 @@ class VanillaPolicy:
         self.logprob_sample_op = self.distribution.log_prob(self.sample_op, name = "logprob_sample")
         self.logprob_sample_placeholder = tf.placeholder(tf.float32, shape = [None], name = "logprob_sample_placeholder")
         self.approx_entropy_op = -tf.reduce_mean(self.logprob_op, name = "approximate_entropy")
-        self.approx_kl_divergence_op = -tf.reduce_mean(self.logprob_sample_placeholder - self.logprob_op)
+        self.approx_kl_divergence_op = 0.5 * tf.reduce_mean(tf.square(self.logprob_sample_placeholder - self.logprob_op))
 
         self.policy_value_op = self._create_objective()
         self.update_op = tf.train.AdamOptimizer(self.lr_placeholder).minimize(-self.policy_value_op)
@@ -224,16 +224,13 @@ if __name__ == '__main__':
 
     log = loggy.Log("acrobot-vanilla")
     vp = VanillaPolicy(
-        model = (lambda *args, **varargs: models.mlp(n_layers = 2,
-                                                     hidden_size = 64,
-                                                     *args, **varargs)),
+        model = (lambda *args, **varargs: models.mlp(*args, **varargs)),
         # env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = options.history_size),
         env_creator = schedules.DummyGymSchedule('Acrobot-v1'),
         lr_schedule = lambda t: 1e-4,
         min_observations_per_step = 5000,
         log = log,
         gamma = 0.99,
-        fp_observations = True,
         render = False,
         render_mod = 16
     )
