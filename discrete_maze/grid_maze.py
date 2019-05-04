@@ -57,6 +57,7 @@ class GridExplore:
     def step(self, action):
         # 0 = up, 1 = right, 2 = down, 3 = left
         assert action in [0,1,2,3], 'Action invalid for Grid Maze.'
+        self.n_steps += 1
         info = {}
         new_loc = list(self.agent)
         if action == 0:
@@ -77,11 +78,17 @@ class GridExplore:
         if not info['correct_direction']:
             rew -= .01
 
+        if self.n_steps > self.max_allowed_steps:
+            done = True
+            info['truncated'] = True
+        else:
+            info['truncated'] = False
+
         return self._observation(), rew, done, info
 
     def reset(self):
         self.end_node, self.agent = random.sample(self.open_squares, 2)
-        self.step_n = 0
+        self.n_steps = 0
         return self._observation()
 
     def render(self):
@@ -106,11 +113,11 @@ class GridExplore:
                 color = 'white'
             self.canvas.create_rectangle(x1, y1, x2, y2, fill = color)
         self.window.update()
-
-
+        time.sleep(0.2) # allows us to see what is happening
 
     def close(self):
-        pass
+        if self.window:
+            self.window.destroy()
 
 if __name__ == '__main__':
     maze = GridExplore(6, 6)
