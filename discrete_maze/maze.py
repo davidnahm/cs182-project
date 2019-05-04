@@ -21,7 +21,7 @@ class MazeObservation:
         # observation
         self.shape_unflattened = [history_size, angle_divisions + 1,  id_size]
         self.shape = [history_size * (angle_divisions + 1) * id_size]
-        self.dtype = np.int8
+        self.dtype = np.dtype('int8')
 
 class ExploreTask:
     """
@@ -198,7 +198,7 @@ class ExploreTask:
             ddist = self.distances[self.agent] - old_distance
             rew = (1 / self.difficulty) if ddist < 0 else (-1 / self.difficulty)
 
-        if self.n_steps > self.max_allowed_steps:
+        if self.n_steps >= self.max_allowed_steps:
             done = True
             info['truncated'] = True
         else:

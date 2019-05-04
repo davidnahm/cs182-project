@@ -133,7 +133,7 @@ class PPO_GAE(VanillaPolicyGAE):
             self.log.print_step()
 
 if __name__ == '__main__':
-    log = loggy.Log("maze-h3-ppo-debug", autosave_freq = 10.0)
+    log = loggy.Log("ppo", autosave_freq = 10.0)
     vpgae = PPO_GAE(
         clip_ratio = 0.2,
         max_policy_steps = 80,
@@ -142,15 +142,16 @@ if __name__ == '__main__':
         model = (lambda *args, **varargs: models.mlp(*args, **varargs)),
         value_model = (lambda *args, **varargs: tf.squeeze(models.mlp(out_size = 1,
                                                                 *args, **varargs), axis = 1)),
-        env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 3,
-                                        id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
-        # env_creator = schedules.DummyGymSchedule('LunarLander-v2'),
-        lr_schedule = (lambda t: 2e-4),
-        min_observations_per_step = 4000,
+        # env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 3,
+        #                                 id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
+        # # env_creator = schedules.DummyGymSchedule('LunarLander-v2'),
+        env_creator = schedules.DummyGymSchedule('CartPole-v1'),
+        lr_schedule = (lambda t: 5e-3),
+        min_observations_per_step = 1000,
         log = log,
         gamma = 0.999,
         lambda_gae = .97,
-        value_lr_schedule = (lambda t: 2.4e-3),
+        value_lr_schedule = (lambda t: 1e-2),
         render = False,
         render_mod = 256
     )

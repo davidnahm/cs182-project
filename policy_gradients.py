@@ -29,7 +29,8 @@ class VanillaPolicy:
         # This shouldn't be too slow.
         dummy_env = env_creator.new_env()
 
-        fp_observations = not np.issubdtype(dummy_env.observation_space.dtype, np.floating)
+
+        fp_observations = dummy_env.observation_space.dtype == np.dtype('float32')
         obs_dtype = tf.float32 if fp_observations else tf.int8
         self.obs_placeholder = tf.placeholder(obs_dtype,
                                               shape = [None] + list(dummy_env.observation_space.shape),
@@ -41,7 +42,7 @@ class VanillaPolicy:
         self.net_op = model(self.obs_input,
                             out_size = dummy_env.action_space.n,
                             scope = "policy_net")
-        self.net_op = tf.nn.log_softmax(self.net_op)
+        # self.net_op = tf.nn.log_softmax(self.net_op)
 
         self.action_placeholder = tf.placeholder(tf.int32, shape = [None],
                                               name = "action")
@@ -122,7 +123,7 @@ class VanillaPolicy:
         
         if self.render and self.n_episodes % self.render_mod == 0:
             env.render()
-            time.sleep(1) # so that we have time to see the end
+            time.sleep(0.5) # so that we have time to see the end
             env.close()
 
         path['info']['n_useless_actions'] = n_useless_actions,
@@ -223,18 +224,18 @@ if __name__ == '__main__':
     options = argument_parser.parse_args()
 
 
-    log = loggy.Log("acrobot-vanilla")
+    log = loggy.Log("pg")
     vp = VanillaPolicy(
-        model = (lambda *args, **varargs: models.mlp(*args, **varargs)),
+        model = (lambda *args, **varargs: models.mlp(hiddens = [64, 64], *args, **varargs)),
         # env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = options.history_size),
-        env_creator = schedules.DummyGymSchedule('Acrobot-v1'),
-        lr_schedule = lambda t: 1e-4,
-        min_observations_per_step = 5000,
+        env_creator = schedules.DummyGymSchedule('CartPole-v1'),
+        lr_schedule = lambda t: 5e-3,
+        min_observations_per_step = 1000,
         log = log,
-        gamma = 0.99,
-        render = False,
-        render_mod = 16
+        gamma = 1.0,
+        render = True,
+        render_mod = 256
     )
     vp.initialize_variables()
-    vp.optimize(500000)
+    vp.optimize(100000)
     log.close()

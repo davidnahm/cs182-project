@@ -78,7 +78,7 @@ class GridExplore:
         if not info['correct_direction']:
             rew -= .01
 
-        if self.n_steps > self.max_allowed_steps:
+        if self.n_steps >= self.max_allowed_steps:
             done = True
             info['truncated'] = True
         else:
@@ -113,7 +113,7 @@ class GridExplore:
                 color = 'white'
             self.canvas.create_rectangle(x1, y1, x2, y2, fill = color)
         self.window.update()
-        time.sleep(0.2) # allows us to see what is happening
+        time.sleep(0.05) # allows us to see what is happening
 
     def close(self):
         if self.window:
@@ -132,4 +132,3 @@ if __name__ == '__main__':
         print("observation:", obs)
         print("reward:", rew)
         print("info", info)
-        time.sleep(0.2)

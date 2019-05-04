@@ -160,8 +160,7 @@ class Log:
 
 if __name__ == '__main__':
     g = Grapher()
-    g.add_all('maze-h3-ppo')
-    g.add_all('maze-h1-pggae')
-    g.add_all('maze-h3-pggae')
-    g.add_all('maze-h3-ppo-debug')
-    g.plot('current maze size')
+    g.add_all('rnn_ppo')
+    g.add_all('ppo')
+    g.add_all('pg')
+    g.plot('average reward', 'simulation steps')

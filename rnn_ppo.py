@@ -3,6 +3,7 @@ import tensorflow as tf
 import numpy as np
 import loggy
 import schedules
+import models
 
 class RNN_PPO(PPO_GAE):
     def _create_objective(self):
@@ -42,8 +43,11 @@ class RNN_PPO(PPO_GAE):
             with tf.variable_scope("out_layers"):
                 x = tf.layers.dense(outputs, dummy_env.action_space.n, activation = tf.tanh)
                 self.policy_1 = tf.nn.log_softmax(x)
-                value = tf.layers.dense(outputs, 1)
-                self.value_1 = tf.squeeze(value, axis = 2)
+                if self.separate_value_network:
+                    self.value_1 = self.separate_value_network(self.obs_input)
+                else:
+                    value = tf.layers.dense(outputs, 1)
+                    self.value_1 = tf.squeeze(value, axis = 2)
                 self.distribution_1 = tf.distributions.Categorical(logits = self.policy_1)
                 self.sample_op = self.distribution_1.sample()
                 self.logprob_sample_1_op = self.distribution_1.log_prob(self.sample_op)
@@ -55,8 +59,11 @@ class RNN_PPO(PPO_GAE):
             with tf.variable_scope("out_layers", reuse = True):
                 x = tf.layers.dense(outputs, dummy_env.action_space.n, activation = tf.tanh)
                 self.policy_batch = tf.nn.log_softmax(x)
-                value = tf.layers.dense(outputs, 1)
-                self.value_batch = tf.squeeze(value, axis = 2)
+                if self.separate_value_network:
+                    self.value_batch = self.value_1
+                else:
+                    value = tf.layers.dense(outputs, 1)
+                    self.value_batch = tf.squeeze(value, axis = 2)
                 self.distribution_batch = tf.distributions.Categorical(logits = self.policy_batch)
                 self.logprob_op = self.distribution_batch.log_prob(self.action_placeholder, name = "logprob_for_action")
 
@@ -74,7 +81,8 @@ class RNN_PPO(PPO_GAE):
                  render_mod = 16,
                  preprocess_op = (lambda x: x),
                  rnn_stacks = 1,
-                 hidden_units = 32):
+                 hidden_units = 32,
+                 separate_value_network = None):
         self.clip_ratio = clip_ratio
         self.max_policy_steps = max_policy_steps
         self.max_kl = max_kl
@@ -91,12 +99,13 @@ class RNN_PPO(PPO_GAE):
         self.preprocess_op = preprocess_op
         self.rnn_stacks = rnn_stacks
         self.hidden_units = hidden_units
+        self.separate_value_network = separate_value_network
 
         # We create a throwaway environment for the observation / action shape.
         # This shouldn't be too slow.
         dummy_env = env_creator.new_env()
 
-        fp_observations = not np.issubdtype(dummy_env.observation_space.dtype, np.floating)
+        fp_observations = dummy_env.observation_space.dtype == np.dtype('float32')
         obs_dtype = tf.float32 if fp_observations else tf.int8
         self.obs_placeholder = tf.placeholder(obs_dtype,
                                               shape = [None, None] + list(dummy_env.observation_space.shape),
@@ -150,6 +159,7 @@ class RNN_PPO(PPO_GAE):
         path['actions'].append(action)
         path['logprobs'].append(logprob[0][0])
         path['values'].append(value[0][0])
+        path['last_hidden'] = hidden_state
 
         obs, reward, done, info = env.step(action)
         self.env_creator.update(done, info)
@@ -169,7 +179,8 @@ class RNN_PPO(PPO_GAE):
     def _pad_paths(self, ps, convert = True):
         """
         Takes in array of arrays, and turns them into a numpy array with
-        shorter arrays padded with 0s on the right.
+        shorter arrays padded with 0s on the right. Transposes for use with
+        RNNs
         """
         if convert:
             ps = [np.array(p) for p in ps]
@@ -179,6 +190,12 @@ class RNN_PPO(PPO_GAE):
         # the axes after the first
         target_shape = list(ps[0].shape[1:])
         ps = [np.concatenate((p, np.zeros([maxlen - p.shape[0]] + target_shape, dtype = ps[0].dtype))) for p in ps]
+
+        # This handles both the case when there are extra axes and when there are not
+        # axes = list(range(len(ps[0].shape) + 1))
+        # axes[0] = 1
+        # axes[1] = 0
+        # return np.transpose(np.stack(ps), axes)
         return np.stack(ps)
 
     def _initialize_path_dict(self):
@@ -194,7 +211,7 @@ class RNN_PPO(PPO_GAE):
         while total_path_length < self.min_observations_per_step:
             path_i = self.sample_trajectory()
 
-            path_length = len(path['observations'])
+            path_length = len(path_i['observations'])
             total_path_length += path_length
             path['path lengths'].append(path_length)
             path['observations'].append(path_i['observations'])
@@ -277,13 +294,19 @@ class RNN_PPO(PPO_GAE):
 if __name__ == '__main__':
     log = loggy.Log("rnn_ppo", autosave_freq = 10.0)
     vpgae = RNN_PPO(
-        env_creator = schedules.GridMazeSchedule(),
+        # env_creator = schedules.GridMazeSchedule(),
         # env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 1,
         #                                 id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
         # env_creator = schedules.DummyGymSchedule('LunarLander-v2'),
+        env_creator = schedules.DummyGymSchedule('CartPole-v1'),
+        lr_schedule = (lambda t: 1e-4),
+        value_prop_schedule = (lambda t: 1.0),
+        min_observations_per_step = 1000,
         log = log,
-        render = True,
-        render_mod = 90,
+        render = False,
+        render_mod = 256,
+        separate_value_network = (lambda *args, **varargs:
+            tf.squeeze(models.mlp(scope = "value_network", out_size = 1, flatten = False, *args, **varargs), axis = 2))
     )
     vpgae.initialize_variables()
     vpgae.optimize(200000)
