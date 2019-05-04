@@ -30,16 +30,21 @@ class RNN_PPO(PPO_GAE):
             # https://stackoverflow.com/questions/39112622/how-do-i-set-tensorflow-rnn-state-when-state-is-tuple-true
 
             # Batch size 1
-
-            self.state_placeholder = tf.placeholder(tf.float32, [self.rnn_stacks, 2, 1, self.hidden_units])
-            self.zero_state_array = np.zeros((self.rnn_stacks, 2, 1, self.hidden_units))
-            sp = tf.unstack(self.state_placeholder, axis = 0)
+            # To stop us from passing the hidden state back and forth through a feed_dict, we instead create an operation
+            # to assign the hidden state to a variable, which in turn is fed back into the RNN
+            self.state_variable = tf.get_variable("hidden_state", [self.rnn_stacks, 2, 1, self.hidden_units],
+                                        initializer = tf.keras.initializers.Zeros(dtype = tf.float32),
+                                        trainable = False)
+            zero_state = tf.zeros([self.rnn_stacks, 2, 1, self.hidden_units], dtype = tf.float32)
+            self.reset_state_op = tf.assign(self.state_variable, zero_state)
+            sp = tf.unstack(self.state_variable, axis = 0)
             tuple_state = tuple([tf.nn.rnn_cell.LSTMStateTuple(sp[idx][0], sp[idx][1]) for idx in range(self.rnn_stacks)])
 
             outputs, self.hidden_state_out = tf.nn.dynamic_rnn(rnn_cell, self.obs_input,
                                                         initial_state = tuple_state,
                                                         sequence_length = self.seqlen_placeholder,
                                                         dtype = tf.float32)
+            self.update_state_op = tf.assign(self.state_variable, self.hidden_state_out)
             with tf.variable_scope("out_layers"):
                 x = tf.layers.dense(outputs, dummy_env.action_space.n, activation = tf.tanh)
                 self.policy_1 = tf.nn.log_softmax(x)
@@ -141,17 +146,17 @@ class RNN_PPO(PPO_GAE):
         self.update_op = tf.train.AdamOptimizer(self.lr_placeholder).minimize(-self.value_op)
 
     def _initialize_sample_path_dict(self):
-        path = super()._initialize_sample_path_dict()
-        path['last_hidden'] = np.zeros([self.rnn_stacks, 2, 1, self.hidden_units])
-        return path
+        # Technically not initializing the path dict but we need to reset the hidden state
+        # every time we get a new path dict.
+        self.session.run(self.reset_state_op) 
+        return super()._initialize_sample_path_dict()
 
     def _step_once(self, path, env, obs):
         path['observations'].append(obs)
-        action, logprob, value, hidden_state = self.session.run(
-            [self.sample_op, self.logprob_sample_1_op, self.value_1, self.hidden_state_out],
+        action, logprob, value, _ = self.session.run(
+            [self.sample_op, self.logprob_sample_1_op, self.value_1, self.update_state_op],
             feed_dict = {
                 self.obs_placeholder: obs[None, None],
-                self.state_placeholder: path['last_hidden'],
                 self.seqlen_placeholder: [1]
             }
         )
@@ -159,7 +164,6 @@ class RNN_PPO(PPO_GAE):
         path['actions'].append(action)
         path['logprobs'].append(logprob[0][0])
         path['values'].append(value[0][0])
-        path['last_hidden'] = hidden_state
 
         obs, reward, done, info = env.step(action)
         self.env_creator.update(done, info)
@@ -292,16 +296,16 @@ class RNN_PPO(PPO_GAE):
                 self.log.print_step()
 
 if __name__ == '__main__':
-    log = loggy.Log("rnn_ppo", autosave_freq = 10.0)
+    log = loggy.Log("maze-rnn-ppo", autosave_freq = 10.0)
     vpgae = RNN_PPO(
         # env_creator = schedules.GridMazeSchedule(),
-        # env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 1,
-        #                                 id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
+        env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 1,
+                                        id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
         # env_creator = schedules.DummyGymSchedule('LunarLander-v2'),
-        env_creator = schedules.DummyGymSchedule('CartPole-v1'),
+        # env_creator = schedules.DummyGymSchedule('CartPole-v1'),
         lr_schedule = (lambda t: 1e-4),
-        value_prop_schedule = (lambda t: 1.0),
-        min_observations_per_step = 1000,
+        value_prop_schedule = (lambda t: 10.0),
+        min_observations_per_step = 3000,
         log = log,
         render = False,
         render_mod = 256,
