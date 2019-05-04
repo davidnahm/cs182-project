@@ -16,12 +16,15 @@ class Maze(MiniWorldEnv):
         num_cols=8,
         room_size=3,
         max_episode_steps=None,
+        reuse_maze=False,
         **kwargs
     ):
         self.num_rows = num_rows
         self.num_cols = num_cols
         self.room_size = room_size
         self.gap_size = 0.25
+        self.reuse_maze = reuse_maze
+        self.num_episodes = 0
 
         super().__init__(
             max_episode_steps = max_episode_steps or num_rows * num_cols * 24,
@@ -33,7 +36,7 @@ class Maze(MiniWorldEnv):
 
     def _gen_world(self):
         rows = []
-
+        
         # For each row
         for j in range(self.num_rows):
             row = []
@@ -135,12 +138,15 @@ class Maze(MiniWorldEnv):
                 for a in range(len(open_walls)):
                     pos, dir = get_coords(open_walls[a], room)
                     print(open_walls[a], pos)
-                    self.entities.append(TextFrame(pos=pos, dir=dir, str=str(a)))
+                    self.entities.append(TextFrame(pos=pos, dir=dir, str=str(a), height=2, depth=3))
                 
         #self.place_entity(TextFrame((0, 0, 0), math.pi/2, 'abc'))
         self.box = self.place_entity(Box(color='red'))
 
         self.place_agent()
+        self.initial_agent_pos = self.agent.pos
+        self.initial_agent_dir = self.agent.dir
+
 
     def get_coords(self, wall_num, room):
         room_width = 3
@@ -169,6 +175,17 @@ class Maze(MiniWorldEnv):
             done = True
 
         return obs, reward, done, info
+
+    def reset(self):
+        self.num_episodes += 1
+        if self.reuse_maze and self.num_episodes > 1:
+            self.step_count = 0
+            self.agent.pos = self.initial_agent_pos
+            self.agent.dir = self.initial_agent_dir
+            obs = self.render_obs()
+            return obs
+        else:
+            return super().reset()
 
 class MazeS2(Maze):
     def __init__(self):
