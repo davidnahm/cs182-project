@@ -88,6 +88,8 @@ class RNN_PPO(PPO_GAE):
                  rnn_stacks = 1,
                  hidden_units = 32,
                  separate_value_network = None):
+        if log:
+            log.add_hyperparams(locals())
         self.clip_ratio = clip_ratio
         self.max_policy_steps = max_policy_steps
         self.max_kl = max_kl
@@ -309,6 +311,7 @@ if __name__ == '__main__':
         log = log,
         render = False,
         render_mod = 256,
+        rnn_stacks = 2,
         separate_value_network = (lambda *args, **varargs:
             tf.squeeze(models.mlp(scope = "value_network", out_size = 1, flatten = False, *args, **varargs), axis = 2))
     )

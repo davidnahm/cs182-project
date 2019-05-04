@@ -1,15 +1,9 @@
-# should:
-# save newest model
-# log various statistics + timestamps
-# log parameters
-# copy code
-# have a mechanism to compare / aggregate runs
-
 from tabulate import tabulate
 import time
 import os
-import pickle
+import dill
 import matplotlib.pyplot as plt
+import tensorflow as tf
 import glob
 import numpy as np
 from datetime import datetime
@@ -39,8 +33,8 @@ class Grapher:
     def _get_data(self, y_name, x_name, smooth_sigma):
         all_xs, all_ys = [], []
         for name in self.names:
-            with open(os.path.join(name, 'log.pickle'), 'rb') as pickle_f:
-                table = pickle.load(pickle_f)
+            with open(os.path.join(name, 'log.dill'), 'rb') as dill_f:
+                table = dill.load(dill_f)
                 xs, ys = [], []
                 for step in table:
                     if x_name in step and y_name in step:
@@ -103,7 +97,7 @@ class Log:
         self.step_n = 0
         self.table = []
         self.extra_info = []
-        self.globals = {}
+        self.params = {}
         self.autosave_freq = autosave_freq
         self.last_saved = self.start_time
 
@@ -112,8 +106,10 @@ class Log:
         self.parent_dir = parent_dir
         self.created_directory = False
 
-    def add_globals(self, info):
-        self.globals = {**self.globals, **info}
+    def add_hyperparams(self, info):
+        # 'self' is usually redundant
+        info = {k:v for k,v in info.items() if dill.pickles(v) and k != 'self'}
+        self.params = {**self.params, **info}
 
     def add_info(self, info):
         """
@@ -142,12 +138,14 @@ class Log:
     def save(self):
         self.last_saved = time.time()
         self.require_directory()
-        with open(os.path.join(self.dir_path, 'log.pickle'), 'wb') as pickle_f:
-            pickle.dump(self.table, pickle_f)
+        with open(os.path.join(self.dir_path, 'log.dill'), 'wb') as dill_f:
+            dill.dump(self.table, dill_f)
+        with open(os.path.join(self.dir_path, 'params.dill'), 'wb') as dill_f:
+            dill.dump(self.params, dill_f)
 
     def save_variables(self, session):
-        # see https://www.tensorflow.org/guide/saved_model
-        self.require_directory() # TODO
+        self.require_directory()
+        saver = tf.train.Saver()
 
     def print_step(self):
         assert self.step_n > 0, 'Must step before printing a step.'
@@ -160,7 +158,5 @@ class Log:
 
 if __name__ == '__main__':
     g = Grapher()
-    g.add_all('rnn_ppo')
-    g.add_all('ppo')
-    g.add_all('pg')
-    g.plot('average reward', 'simulation steps')
+    g.add_all('maze-ppo')
+    g.plot('current maze size', 'simulation steps')

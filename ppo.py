@@ -10,11 +10,11 @@ class PPO(VanillaPolicy):
     def __init__(self, clip_ratio, max_policy_steps, max_kl,
                  model, env_creator, lr_schedule, min_observations_per_step,
                  log, gamma, render=False, render_mod=16):
+        super().__init__(model, env_creator, lr_schedule, min_observations_per_step,
+                         log, gamma, render=render, render_mod=render_mod)
         self.clip_ratio = clip_ratio
         self.max_policy_steps = max_policy_steps
         self.max_kl = max_kl
-        super().__init__(model, env_creator, lr_schedule, min_observations_per_step,
-                         log, gamma, render=render, render_mod=render_mod)
 
     # From the spinningup implementation
     def _create_objective(self):

@@ -15,6 +15,8 @@ class VanillaPolicy:
         """
         gamma = our discount factor
         """
+        if log:
+            log.add_hyperparams(locals())
         self.env_creator = env_creator
         self.lr_schedule = lr_schedule
         self.min_observations_per_step = min_observations_per_step

@@ -18,13 +18,18 @@ class GridExplore:
     def _is_open(self, x, y):
         return 0 <= x < self.size_x and 0 <= y < self.size_y and self.grid[x][y]
 
-    def __init__(self, size_x, size_y, max_allowed_step_ratio = 2.0):
+    def __init__(self, size_x, size_y, max_allowed_step_ratio = 2.0, include_last_action_and_reward = True):
         # Modified version of randomized Prim's algorithm from
         # https://en.wikipedia.org/wiki/Maze_generation_algorithm
         self.size_x = size_x
         self.size_y = size_y
         self.action_space = gym.spaces.Discrete(4)
-        self.observation_space = gym.spaces.Box(-1.0, 1.0, shape = (4,), dtype = np.float32)
+        self.include_last_action_and_reward = include_last_action_and_reward
+
+        self.obs_n = 4
+        if include_last_action_and_reward:
+            self.obs_n += 5
+        self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape = (self.obs_n,), dtype = np.float32)
 
         self.grid = [[False for _ in range(size_y)] for _ in range(size_x)]
         gen_x, gen_y = random.randint(0, size_x - 1), random.randint(0, size_y - 1)
@@ -43,7 +48,7 @@ class GridExplore:
         self.window = None
 
     def _observation(self):
-        obs = np.zeros((4,))
+        obs = np.zeros((self.obs_n,), dtype = np.float32)
         if self._is_open(self.agent[0], self.agent[1] - 1):
             obs[0] += 1.0
         if self._is_open(self.agent[0] + 1, self.agent[1]):
@@ -52,12 +57,18 @@ class GridExplore:
             obs[2] += 1.0
         if self._is_open(self.agent[0] - 1, self.agent[1]):
             obs[3] += 1.0
+        
+        if self.include_last_action_and_reward and self.last_action:
+            obs[self.last_action + 4] = 1.0
+            obs[8] = self.last_reward
+            
         return obs
 
     def step(self, action):
         # 0 = up, 1 = right, 2 = down, 3 = left
         assert action in [0,1,2,3], 'Action invalid for Grid Maze.'
         self.n_steps += 1
+        self.last_action = action
         info = {}
         new_loc = list(self.agent)
         if action == 0:
@@ -77,6 +88,7 @@ class GridExplore:
         rew = 1.0 if done else -.01 # TODO: add different types of reward?
         if not info['correct_direction']:
             rew -= .01
+        self.last_reward = rew
 
         if self.n_steps >= self.max_allowed_steps:
             done = True
@@ -89,6 +101,7 @@ class GridExplore:
     def reset(self):
         self.end_node, self.agent = random.sample(self.open_squares, 2)
         self.n_steps = 0
+        self.last_action = None
         return self._observation()
 
     def render(self):
