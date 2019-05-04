@@ -24,7 +24,7 @@ class Maze(MiniWorldEnv):
         self.room_size = room_size
         self.gap_size = 0.25
         self.reuse_maze = reuse_maze
-        self.num_episodes = 0
+        self.episode_num = 1
 
         super().__init__(
             max_episode_steps = max_episode_steps or num_rows * num_cols * 24,
@@ -169,23 +169,33 @@ class Maze(MiniWorldEnv):
 
     def step(self, action):
         obs, reward, done, info = super().step(action)
-
+        if self.episode_num == 2 and not self.episode1_success:
+            reward = -1 * reward
+        if done and self.episode_num == 1:
+            self.step_count = 0
+            self.episode1_success = False
+            self.episode_num += 1
+            self.agent.pos = self.initial_agent_pos
+            self.agent.dir = self.initial_agent_dir
+            obs = self.render_obs()
+            done = False
         if self.near(self.box):
             reward += self._reward()
-            done = True
+            if self.episode_num == 1:
+                self.step_count = 0
+                self.agent.pos = self.initial_agent_pos
+                self.agent.dir = self.initial_agent_dir
+                self.episode1_success = True
+                obs = self.render_obs()
+            else:
+                done = True     
+            self.episode_num += 1
 
         return obs, reward, done, info
 
     def reset(self):
-        self.num_episodes += 1
-        if self.reuse_maze and self.num_episodes > 1:
-            self.step_count = 0
-            self.agent.pos = self.initial_agent_pos
-            self.agent.dir = self.initial_agent_dir
-            obs = self.render_obs()
-            return obs
-        else:
-            return super().reset()
+        self.episode_num = 1
+        return super().reset()
 
 class MazeS2(Maze):
     def __init__(self):
