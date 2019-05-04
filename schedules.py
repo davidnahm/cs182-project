@@ -9,7 +9,6 @@ class DummyGymSchedule:
 
     def __init__(self, name):
         self.env = gym.make(name)
-        self.env_type_will_change = False
 
     def update(self, done, info):
         pass
@@ -19,6 +18,9 @@ class DummyGymSchedule:
 
     def add_logging_data(self, data):
         pass
+
+    def allow_change(self):
+        return False
 
 class ExploreCreatorSchedule:
     """
@@ -56,14 +58,19 @@ class ExploreCreatorSchedule:
                 # counts as a success
                 self.current_prop_estimate += 1 - self.gamma
             if self.current_prop_estimate > self.ratio_completed_trigger:
-                self.current_prop_estimate = 0.0
-                self.current_size = int(self.current_size * self.jump_ratio)
                 self.env_type_will_change = True
 
     def new_env(self):
-        self.env_type_will_change = False
         return ExploreTask(self.current_size, **self.explore_args)
 
     def add_logging_data(self, data):
         data['current maze size'] = self.current_size
         data['current environment confidence'] = self.current_prop_estimate
+
+    def allow_change(self):
+        changed = self.env_type_will_change
+        if changed:
+            self.env_type_will_change = False
+            self.current_prop_estimate = 0.0
+            self.current_size = int(self.current_size * self.jump_ratio)
+        return changed

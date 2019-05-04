@@ -43,8 +43,7 @@ class ExploreTask:
                 place_agent_far_from_dest = True,
                 agent_placement_prop = 0.8,
                 reward_type = 'penalty+finished',
-                scale_reward_by_difficulty = True,
-                grid_maze = False):
+                scale_reward_by_difficulty = True):
         """
         It's not strictly guaranteed that you will get n_points in the graph, 
         as potentially there might be fewer due to the generating grid not being large enough.
@@ -55,8 +54,7 @@ class ExploreTask:
 
         angle_divisions is the number of angles along which we sample for edges in an observation,
         as well as the size of the action space. Making this finer will help give more positioning
-        information, but will be more expensive. If grid_maze is set to True this is overridden
-        to be 4.
+        information, but will be more expensive.
 
         id_size is the length of each "identifier" for a node, each feature of which is uniformly
         randomly selected from [-1, 0, 1]
@@ -86,15 +84,7 @@ class ExploreTask:
             (average length of random path) / (probability random path will finish)
         This does increase the time to run .reset() significantly, doubling the time necessary to initialize
         at around maze size 40.
-
-        grid_maze will make a random maze on integer coordinates, with edges only going up, down, left, or right.
-            This reduces angle_divisions to 4.
         """
-
-        self.grid_maze = grid_maze
-        if grid_maze:
-            angle_divisions = 4
-
         self.action_space = MazeChoice(angle_divisions)
         self.observation_space = MazeObservation(history_size, angle_divisions, id_size)
         self.id_size = id_size

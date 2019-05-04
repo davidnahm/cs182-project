@@ -157,13 +157,6 @@ class VanillaPolicy:
         while len(path['observations']) < self.min_observations_per_step:
             path_i = self.sample_trajectory()
 
-            # We don't want to mix episodes where the environment is of varying difficulties.
-            # Since environments will not frequently increase in difficulty, I think it's 
-            # worth the performance hit to just restart with the new environment type.
-            if self.env_creator.env_type_will_change:
-                print("Environment type changing!")
-                return self.sample_trajectories()
-
             path['observations'].extend(path_i['observations'])
             path['actions'].extend(path_i['actions'])
             path['logprobs'].extend(path_i['logprobs'])
@@ -174,6 +167,11 @@ class VanillaPolicy:
             # cummulative rewards
             self._calculate_advantages(path, path_i)
         
+        # now the environment creator can move on
+        if self.env_creator.allow_change():
+            # will trigger whenever actually changes
+            print("Environment type changing!")
+
         path['observations'] = np.array(path['observations'])
         path['advantages'] = np.array(path['advantages'])
         
