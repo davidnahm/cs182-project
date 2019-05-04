@@ -1,4 +1,5 @@
 from discrete_maze.maze import ExploreTask
+from discrete_maze.grid_maze import GridExplore
 import gym
 
 class DummyGymSchedule:
@@ -74,3 +75,7 @@ class ExploreCreatorSchedule:
             self.current_prop_estimate = 0.0
             self.current_size = int(self.current_size * self.jump_ratio)
         return changed
+
+class GridMazeSchedule(ExploreCreatorSchedule):
+    def new_env(self):
+        return GridExplore(self.current_size, self.current_size, **self.explore_args)

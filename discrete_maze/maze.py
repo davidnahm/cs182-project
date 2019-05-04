@@ -19,7 +19,8 @@ class MazeObservation:
         # Second coordinate is angle_divisions + 1 because
         # we include the id of the node the agent is on in the
         # observation
-        self.shape = [history_size, angle_divisions + 1, id_size]
+        self.shape_unflattened = [history_size, angle_divisions + 1,  id_size]
+        self.shape = [history_size * (angle_divisions + 1) * id_size]
         self.dtype = np.int8
 
 class ExploreTask:
@@ -153,7 +154,7 @@ class ExploreTask:
 
     def _observation(self):
         # obs has time dimension 1
-        obs = np.zeros([1] + self.observation_space.shape[1:], dtype = np.int8)
+        obs = np.zeros([1] + self.observation_space.shape_unflattened[1:], dtype = np.int8)
         obs[0, 0] = self.point_ids[self.agent]
         agent_p = self.points[self.agent]
         for node_i in self.edge_list[self.agent]:
@@ -164,7 +165,7 @@ class ExploreTask:
 
         self.observation_history = np.delete(self.observation_history, 0, 0)
         self.observation_history = np.append(self.observation_history, obs, axis = 0)
-        return self.observation_history
+        return self.observation_history.flatten()
 
 
     def step(self, action):
@@ -211,7 +212,7 @@ class ExploreTask:
         See note for __init__ to see effect of self.place_agent_far_from_dest
         """
         self.n_steps = 0
-        self.observation_history = np.zeros(self.observation_space.shape, dtype = np.int8)
+        self.observation_history = np.zeros(self.observation_space.shape_unflattened, dtype = np.int8)
 
         if self.place_agent_far_from_dest or self.reward_type == 'distance' and not self.distances:
             q = deque([self.end_node])

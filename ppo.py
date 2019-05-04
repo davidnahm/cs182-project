@@ -26,7 +26,6 @@ class PPO(VanillaPolicy):
 
     def optimize(self, total_steps):
         steps = 0
-
         while steps < total_steps:
             path = self.sample_trajectories()
             feed = {
@@ -86,7 +85,6 @@ class PPO_GAE(VanillaPolicyGAE):
 
     def optimize(self, total_steps):
         steps = 0
-
         while steps < total_steps:
             path = self.sample_trajectories()
             feed = {
@@ -126,7 +124,8 @@ class PPO_GAE(VanillaPolicyGAE):
                 'simulation steps': steps,
                 'kl divergence': approximate_kl,
                 'inner policy training steps': n_policy_steps,
-                'value loss': value_loss
+                'value loss': value_loss,
+                'number of episodes': path['number of episodes']
             }
             self.env_creator.add_logging_data(log_data)
 
@@ -134,7 +133,7 @@ class PPO_GAE(VanillaPolicyGAE):
             self.log.print_step()
 
 if __name__ == '__main__':
-    log = loggy.Log("maze-h3-ppo", autosave_freq = 10.0)
+    log = loggy.Log("maze-h3-ppo-debug", autosave_freq = 10.0)
     vpgae = PPO_GAE(
         clip_ratio = 0.2,
         max_policy_steps = 80,

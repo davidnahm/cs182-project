@@ -41,6 +41,7 @@ class VanillaPolicy:
         self.net_op = model(self.obs_input,
                             out_size = dummy_env.action_space.n,
                             scope = "policy_net")
+        self.net_op = tf.nn.log_softmax(self.net_op)
 
         self.action_placeholder = tf.placeholder(tf.int32, shape = [None],
                                               name = "action")
@@ -112,7 +113,7 @@ class VanillaPolicy:
 
             obs, reward, done, info = self._step_once(path, env, obs)
 
-            # if we are doing CartPole-v0, we just ignore this
+            # we'll only log this if it's in the actual info dict.
             if 'correct_direction' in info and not info['correct_direction']:
                 n_useless_actions += 1
 
@@ -137,6 +138,7 @@ class VanillaPolicy:
             'actions': [],
             'reward_totals': [],
             'logprobs': [],
+            'number of episodes': 0,
             'info': []
         }
 
@@ -162,6 +164,7 @@ class VanillaPolicy:
             path['logprobs'].extend(path_i['logprobs'])
 
             path['reward_totals'].append(sum(path_i['rewards']))
+            path['number of episodes'] += 1
             path['info'].append(path_i['info'])
 
             # cummulative rewards
