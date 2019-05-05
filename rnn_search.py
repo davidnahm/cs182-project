@@ -29,13 +29,25 @@ def run_with_random_hyperparameters(_):
     scale_reward_by_difficulty = random.random() > 0.5
     place_agent_far_from_dest = random.random() > 0.2
     agent_placement_prop = random.uniform(0.2, 0.9)
+    time_penalty = 10 ** random.uniform(-2.3, -.8)
+    invalid_move_penalty = 10 ** random.uniform(-1, 0.5)
+
+
+    def dense_concat_net(*args, **varargs):
+        return models.mlp(out_size = 16, output_activation = tf.tanh, scope = "concat_net",
+                          flatten = False,
+                          *args, **varargs)
+    concat_net = dense_concat_net if random.random() > 0.5 else None
+
     params = {
         # 'env_creator': schedules.GridMazeSchedule(),
         'env_creator': schedules.ExploreCreatorSchedule(is_tree = False, history_size = history_size,
                                         id_size = id_size, reward_type = reward_type,
                                         scale_reward_by_difficulty = scale_reward_by_difficulty,
                                         place_agent_far_from_dest = place_agent_far_from_dest,
-                                        agent_placement_prop = agent_placement_prop),
+                                        agent_placement_prop = agent_placement_prop,
+                                        time_penalty = time_penalty,
+                                        invalid_move_penalty = invalid_move_penalty),
         'clip_ratio': random.uniform(0.18, 0.22), # this seems to be set well
         'max_policy_steps': random.randint(50, 100),
         'max_kl': random.uniform(0.01, 0.02),
@@ -48,7 +60,8 @@ def run_with_random_hyperparameters(_):
         'render': False,
         'rnn_stacks': random.randint(1, 3),
         'hidden_units': 2 ** random.randint(4, 8),
-        'separate_value_network': separate_value_network
+        'separate_value_network': separate_value_network,
+        'concat_net': concat_net
     }
 
     params = log.process_params(params)

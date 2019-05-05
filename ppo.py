@@ -13,7 +13,6 @@ class PPO(VanillaPolicy):
         super().__init__(model, env_creator, lr_schedule, min_observations_per_step,
                          log, gamma, render=render, render_mod=render_mod)
 
-
         self.clip_ratio = clip_ratio
         self.max_policy_steps = max_policy_steps
         self.max_kl = max_kl
@@ -68,12 +67,11 @@ class PPO_GAE(VanillaPolicyGAE):
                  model, env_creator, lr_schedule,
                  min_observations_per_step,
                  log, gamma, render = False, render_mod = 16):
-
-
         self.clip_ratio = clip_ratio
         self.max_policy_steps = max_policy_steps
         self.max_val_steps = max_val_steps
         self.max_kl = max_kl
+        
         super().__init__(value_model, value_lr_schedule, lambda_gae,
                          model, env_creator, lr_schedule,
                          min_observations_per_step,
@@ -131,13 +129,16 @@ class PPO_GAE(VanillaPolicyGAE):
                 'value loss': value_loss,
                 'number of episodes': path['number of episodes']
             }
+            if 'n_useless_actions' in path['info'][0]:
+                total_useless_actions = sum([info['n_useless_actions'] for info in path['info']])
+                log_data['proportion useless actions'] = total_useless_actions / float(path['observations'].shape[0])
             self.env_creator.add_logging_data(log_data)
 
             self.log.step(log_data, self.session)
             self.log.print_step()
 
 if __name__ == '__main__':
-    log = loggy.Log("cartpole-ppo", autosave_freq = 15.0, autosave_vars_freq = 60.0, continuing = True)
+    log = loggy.Log("maze-ppo", autosave_freq = 15.0, autosave_vars_freq = 60.0, continuing = False)
 
     params = {
         'clip_ratio': 0.2,
@@ -148,12 +149,12 @@ if __name__ == '__main__':
         'value_model': (lambda *args, **varargs: tf.squeeze(models.mlp(out_size = 1,
                                                                 *args, **varargs), axis = 1)),
         # 'env_creator': schedules.GridMazeSchedule(),
-        # 'env_creator': schedules.ExploreCreatorSchedule(is_tree = False, history_size = 1,
-        #                                 id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
+        'env_creator': schedules.ExploreCreatorSchedule(is_tree = False, history_size = 1,
+                                        id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
         # 'env_creator': schedules.DummyGymSchedule('LunarLander-v2'),
-        'env_creator': schedules.DummyGymSchedule('CartPole-v1'),
-        'lr_schedule': (lambda t: 5e-3),
-        'min_observations_per_step': 1000,
+        # 'env_creator': schedules.DummyGymSchedule('CartPole-v1'),
+        'lr_schedule': (lambda t: 1e-4),
+        'min_observations_per_step': 3000,
         'log': log,
         'gamma': 0.999,
         'lambda_gae': .97,
@@ -167,5 +168,5 @@ if __name__ == '__main__':
 
     vpgae = PPO_GAE(**params)
     vpgae.initialize_variables()
-    vpgae.optimize(70000)
+    vpgae.optimize(100000)
     log.close(vpgae.session)

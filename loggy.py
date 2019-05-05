@@ -75,6 +75,9 @@ class Grapher:
         while plt.fignum_exists(fig.number):
             fig.canvas.draw()
             fig.canvas.flush_events()
+            ax.set_title("Maze Size vs. Simulation Steps")
+            ax.set_xlabel("Simulation Steps")
+            ax.set_ylabel("Maze Size")
             time.sleep(0.1)
             if time.time() - last_update > update_t:
                 last_update = time.time()
@@ -213,5 +216,8 @@ class Log:
 
 if __name__ == '__main__':
     g = Grapher()
-    g.add_all('maze-hyperparam-search')
-    g.plot('current maze size', 'simulation steps', match_name_colors = False)
+    g.add_all('maze-dense-history')
+    g.add_all('maze-recurrent')
+    g.plot('proportion useless actions', 'simulation steps', match_name_colors = True)
+    g.plot('current maze size', 'simulation steps', match_name_colors = True)
+    

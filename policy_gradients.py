@@ -6,8 +6,15 @@ import numpy as np
 import time
 import schedules
 import argparse
+from tensorflow.python import debug as tf_debug
 
 class VanillaPolicy:
+
+    def _create_model(self, dummy_env):
+        return self.model_fun(self.obs_input,
+                              out_size = dummy_env.action_space.n,
+                              scope = "policy_net")
+
     def __init__(self, model,
                  env_creator, lr_schedule,
                  min_observations_per_step,
@@ -35,19 +42,21 @@ class VanillaPolicy:
         self.obs_placeholder = tf.placeholder(obs_dtype,
                                               shape = [None] + list(dummy_env.observation_space.shape),
                                               name = "observation")
-        if fp_observations:
-            self.obs_input = self.obs_placeholder
-        else:
-            self.obs_input = tf.cast(self.obs_placeholder, tf.float32)
-        self.net_op = model(self.obs_input,
-                            out_size = dummy_env.action_space.n,
-                            scope = "policy_net")
-        # self.net_op = tf.nn.log_softmax(self.net_op)
 
         self.action_placeholder = tf.placeholder(tf.int32, shape = [None],
                                               name = "action")
         self.adv_placeholder = tf.placeholder(tf.float32, shape = [None], name = "advantage")
         self.lr_placeholder = tf.placeholder(tf.float32, shape = [], name = "learning_rate")
+        self.logprob_sample_placeholder = tf.placeholder(tf.float32, shape = [None], name = "logprob_sample_placeholder")
+
+        if fp_observations:
+            self.obs_input = self.obs_placeholder
+        else:
+            self.obs_input = tf.cast(self.obs_placeholder, tf.float32)
+        self.model_fun = model
+        self.net_op = self._create_model(dummy_env)
+        # self.net_op = tf.nn.log_softmax(self.net_op)
+
         self.distribution = tf.distributions.Categorical(logits = self.net_op, name = "action_distribution")
         self.sample_op = self.distribution.sample(name = "sample_action")
         self.logprob_op = self.distribution.log_prob(self.action_placeholder, name = "logprob_for_action")
@@ -56,7 +65,6 @@ class VanillaPolicy:
         # In Vanilla Policy Gradients, KL divergence will always be 0 unless we iterate multiple times
         # on the same actions, which would not make much sense.
         self.logprob_sample_op = self.distribution.log_prob(self.sample_op, name = "logprob_sample")
-        self.logprob_sample_placeholder = tf.placeholder(tf.float32, shape = [None], name = "logprob_sample_placeholder")
         self.approx_entropy_op = -tf.reduce_mean(self.logprob_op, name = "approximate_entropy")
         self.approx_kl_divergence_op = 0.5 * tf.reduce_mean(tf.square(self.logprob_sample_placeholder - self.logprob_op))
 
@@ -70,6 +78,7 @@ class VanillaPolicy:
         tf_config = tf.ConfigProto()
         tf_config.gpu_options.allow_growth = True
         self.session = tf.Session(config = tf_config)
+        self.session = tf_debug.LocalCLIDebugWrapperSession(self.session)
         if not self.log.continuing:
             tf.global_variables_initializer().run(session = self.session)
         else:

@@ -12,15 +12,17 @@ class VanillaPolicyGAE(VanillaPolicy):
                  model, env_creator, lr_schedule,
                  min_observations_per_step,
                  log, gamma, render = False, render_mod = 16):
+        self.return_placeholder = tf.placeholder(tf.float32, shape = [None], name = "returns")
+        self.value_lr_placeholder = tf.placeholder(tf.float32, shape = [], name = "value_learning_rate")
+        
         super().__init__(model, env_creator, lr_schedule,
                          min_observations_per_step,
                          log, gamma, render, render_mod)
+                         
         self.value_lr_schedule = value_lr_schedule
         self.lambda_gae = lambda_gae
 
         self.value_net_op = value_model(self.obs_input, scope = "value_net")
-        self.return_placeholder = tf.placeholder(tf.float32, shape = [None], name = "returns")
-        self.value_lr_placeholder = tf.placeholder(tf.float32, shape = [], name = "value_learning_rate")
 
         # TODO: replace square difference with Huber loss?
         self.value_loss = tf.reduce_mean((self.value_net_op - self.return_placeholder) ** 2)

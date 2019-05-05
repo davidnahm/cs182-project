@@ -18,6 +18,20 @@ class RNN_PPO(PPO_GAE):
         self.value_loss /= self.total_timesteps
         return policy_objective - self.value_loss * self.value_prop_placeholder
 
+    def _create_policy_and_value(self, x, dummy_env):
+        if not self.concat_net:
+            x = tf.concat([x, self.obs_input], axis = 2)
+        else:
+            x = tf.concat([x, self.obs_input, self.concat_net(self.obs_input)], axis = 2)
+        x = tf.layers.dense(x, dummy_env.action_space.n, activation = tf.tanh)
+        policy = tf.nn.log_softmax(x)
+        if self.separate_value_network:
+            value = self.separate_value_network(self.obs_input)
+        else:
+            value = tf.layers.dense(x, 1)
+            value = tf.squeeze(value, axis = 2)
+        return policy, value
+
     def _create_rnn_variables(self, dummy_env):
         with tf.variable_scope("scope"):
             rnn_cells = [tf.nn.rnn_cell.LSTMCell(self.hidden_units, state_is_tuple = True)
@@ -46,13 +60,7 @@ class RNN_PPO(PPO_GAE):
                                                         dtype = tf.float32)
             self.update_state_op = tf.assign(self.state_variable, self.hidden_state_out)
             with tf.variable_scope("out_layers"):
-                x = tf.layers.dense(outputs, dummy_env.action_space.n, activation = tf.tanh)
-                self.policy_1 = tf.nn.log_softmax(x)
-                if self.separate_value_network:
-                    self.value_1 = self.separate_value_network(self.obs_input)
-                else:
-                    value = tf.layers.dense(outputs, 1)
-                    self.value_1 = tf.squeeze(value, axis = 2)
+                self.policy_1, self.value_1 = self._create_policy_and_value(outputs, dummy_env)
                 self.distribution_1 = tf.distributions.Categorical(logits = self.policy_1)
                 self.sample_op = self.distribution_1.sample()
                 self.logprob_sample_1_op = self.distribution_1.log_prob(self.sample_op)
@@ -62,13 +70,7 @@ class RNN_PPO(PPO_GAE):
                                                 sequence_length = self.seqlen_placeholder,
                                                 dtype = tf.float32)
             with tf.variable_scope("out_layers", reuse = True):
-                x = tf.layers.dense(outputs, dummy_env.action_space.n, activation = tf.tanh)
-                self.policy_batch = tf.nn.log_softmax(x)
-                if self.separate_value_network:
-                    self.value_batch = self.value_1
-                else:
-                    value = tf.layers.dense(outputs, 1)
-                    self.value_batch = tf.squeeze(value, axis = 2)
+                self.policy_batch, self.value_batch = self._create_policy_and_value(outputs, dummy_env)
                 self.distribution_batch = tf.distributions.Categorical(logits = self.policy_batch)
                 self.logprob_op = self.distribution_batch.log_prob(self.action_placeholder, name = "logprob_for_action")
 
@@ -87,7 +89,8 @@ class RNN_PPO(PPO_GAE):
                  preprocess_op = (lambda x: x),
                  rnn_stacks = 1,
                  hidden_units = 32,
-                 separate_value_network = None):
+                 separate_value_network = None,
+                 concat_net = None):
         self.clip_ratio = clip_ratio
         self.max_policy_steps = max_policy_steps
         self.max_kl = max_kl
@@ -105,6 +108,7 @@ class RNN_PPO(PPO_GAE):
         self.rnn_stacks = rnn_stacks
         self.hidden_units = hidden_units
         self.separate_value_network = separate_value_network
+        self.concat_net = concat_net
 
         # We create a throwaway environment for the observation / action shape.
         # This shouldn't be too slow.
@@ -200,6 +204,7 @@ class RNN_PPO(PPO_GAE):
     def _initialize_path_dict(self):
         path = super()._initialize_path_dict()
         path['path lengths'] = []
+        path['rewards'] = []
         return path
 
     # Again the main change is that we don't create one long appended array for everything. Instead
@@ -217,6 +222,7 @@ class RNN_PPO(PPO_GAE):
             path['actions'].append(path_i['actions'])
             path['logprobs'].append(path_i['logprobs'])
 
+            path['rewards'].append(path_i['rewards'])
             path['reward_totals'].append(sum(path_i['rewards']))
             path['number of episodes'] += 1
             path['info'].append(path_i['info'])
@@ -240,6 +246,7 @@ class RNN_PPO(PPO_GAE):
         path['advantages'] -= np.mean(adv_concat)
         path['advantages'] /= np.std(adv_concat) + 1e-8
 
+        path['rewards'] = self._pad_paths(path['rewards'])
         path['reward_totals'] = np.array(path['reward_totals'])
         path['actions'] = self._pad_paths(path['actions'])
         path['logprobs'] = self._pad_paths(path['logprobs'])
@@ -301,6 +308,10 @@ class RNN_PPO(PPO_GAE):
 
 if __name__ == '__main__':
     log = loggy.Log("maze-rnn-ppo", autosave_freq = 10.0)
+    def dense_concat_net(*args, **varargs):
+        return models.mlp(out_size = 16, output_activation = tf.tanh, scope = "concat_net",
+                          flatten = False,
+                          *args, **varargs)
     vpgae = RNN_PPO(
         # env_creator = schedules.GridMazeSchedule(),
         env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 1,
@@ -315,7 +326,8 @@ if __name__ == '__main__':
         render_mod = 256,
         rnn_stacks = 2,
         separate_value_network = (lambda *args, **varargs:
-            tf.squeeze(models.mlp(scope = "value_network", out_size = 1, flatten = False, *args, **varargs), axis = 2))
+            tf.squeeze(models.mlp(scope = "value_network", out_size = 1, flatten = False, *args, **varargs), axis = 2)),
+        concat_net = dense_concat_net
     )
     vpgae.initialize_variables()
     vpgae.optimize(200000)
