@@ -168,34 +168,43 @@ class Maze(MiniWorldEnv):
         return (x, 1, z)
 
     def step(self, action):
-        obs, reward, done, info = super().step(action)
-        if self.episode_num == 2 and not self.episode1_success:
-            reward = -1 * reward
+        self.agent_last_pos = self.agent.pos
+        self.agent_last_dir = self.agent.dir
+        obs, _, done, info = super().step(action)
+        reward = 0
+        
+        if self.episode_num == 2:
+            reward += -.01
+            if self.agent_last_dir == self.agent.dir and (self.agent.pos == self.agent_last_pos).all():
+                reward += -.001     # Agent hits a wall
+
         if done and self.episode_num == 1:
             self.step_count = 0
-            self.episode1_success = False
+            #self.episode1_success = False
             self.episode_num += 1
             self.agent.pos = self.initial_agent_pos
             self.agent.dir = self.initial_agent_dir
             obs = self.render_obs()
             done = False
         if self.near(self.box):
-            reward += self._reward()
             if self.episode_num == 1:
                 self.step_count = 0
                 self.agent.pos = self.initial_agent_pos
                 self.agent.dir = self.initial_agent_dir
-                self.episode1_success = True
+                #self.episode1_success = True
                 obs = self.render_obs()
             else:
-                done = True     
+                reward += 1    # Agent reaches box in second episode
+                done = True
             self.episode_num += 1
-
+        print(reward)
         return obs, reward, done, info
 
     def reset(self):
         self.episode_num = 1
         return super().reset()
+
+
 
 class MazeS2(Maze):
     def __init__(self):
