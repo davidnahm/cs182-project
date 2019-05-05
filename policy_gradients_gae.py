@@ -15,7 +15,6 @@ class VanillaPolicyGAE(VanillaPolicy):
         super().__init__(model, env_creator, lr_schedule,
                          min_observations_per_step,
                          log, gamma, render, render_mod)
-
         self.value_lr_schedule = value_lr_schedule
         self.lambda_gae = lambda_gae
 
@@ -65,7 +64,7 @@ class VanillaPolicyGAE(VanillaPolicy):
         path['advantages'].extend(self._calculate_discounted_to_go(deltas, self.gamma * self.lambda_gae))
 
     def optimize(self, total_steps):
-        steps = 0
+        steps = self.log.get_last('simulation steps', 0)
 
         while steps < total_steps:
             path = self.sample_trajectories()
@@ -91,7 +90,7 @@ class VanillaPolicyGAE(VanillaPolicy):
             }
             self.env_creator.add_logging_data(log_data)
 
-            self.log.step(log_data)
+            self.log.step(log_data, self.session)
             self.log.print_step()
 
 
@@ -115,4 +114,4 @@ if __name__ == '__main__':
     )
     vpgae.initialize_variables()
     vpgae.optimize(200000)
-    log.close()
+    log.close(vpgae.session)

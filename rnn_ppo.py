@@ -88,8 +88,6 @@ class RNN_PPO(PPO_GAE):
                  rnn_stacks = 1,
                  hidden_units = 32,
                  separate_value_network = None):
-        if log:
-            log.add_hyperparams(locals())
         self.clip_ratio = clip_ratio
         self.max_policy_steps = max_policy_steps
         self.max_kl = max_kl
@@ -255,7 +253,7 @@ class RNN_PPO(PPO_GAE):
         return path
 
     def optimize(self, total_steps):
-        steps = 0
+        steps = self.log.get_last('simulation steps', 0)
         while steps < total_steps:
             path = self.sample_trajectories()
             feed = {
@@ -294,7 +292,7 @@ class RNN_PPO(PPO_GAE):
                     'number of episodes': path['number of episodes']
                 }
                 self.env_creator.add_logging_data(log_data)
-                self.log.step(log_data)
+                self.log.step(log_data, self.session)
                 self.log.print_step()
 
 if __name__ == '__main__':
@@ -317,4 +315,4 @@ if __name__ == '__main__':
     )
     vpgae.initialize_variables()
     vpgae.optimize(200000)
-    log.close()
+    log.close(vpgae.session)

@@ -15,8 +15,6 @@ class VanillaPolicy:
         """
         gamma = our discount factor
         """
-        if log:
-            log.add_hyperparams(locals())
         self.env_creator = env_creator
         self.lr_schedule = lr_schedule
         self.min_observations_per_step = min_observations_per_step
@@ -72,7 +70,10 @@ class VanillaPolicy:
         tf_config = tf.ConfigProto()
         tf_config.gpu_options.allow_growth = True
         self.session = tf.Session(config = tf_config)
-        tf.global_variables_initializer().run(session = self.session)
+        if not self.log.continuing:
+            tf.global_variables_initializer().run(session = self.session)
+        else:
+            self.log.load_variables(self.session)
 
 
     def _initialize_sample_path_dict(self):
@@ -192,7 +193,7 @@ class VanillaPolicy:
         
 
     def optimize(self, total_steps):
-        steps = 0
+        steps = self.log.get_last('simulation steps', 0)
 
         while steps < total_steps:
             path = self.sample_trajectories()
@@ -215,7 +216,7 @@ class VanillaPolicy:
             }
             self.env_creator.add_logging_data(log_data)
 
-            self.log.step(log_data)
+            self.log.step(log_data, self.session)
             self.log.print_step()
 
 
@@ -240,4 +241,4 @@ if __name__ == '__main__':
     )
     vp.initialize_variables()
     vp.optimize(100000)
-    log.close()
+    log.close(vp.session)
