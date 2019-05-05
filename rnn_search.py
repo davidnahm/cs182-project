@@ -8,7 +8,9 @@ def run_with_random_hyperparameters(_):
     import random
     import schedules
     import models
+    import discrete_maze.maze
 
+    tf.reset_default_graph()
     log = loggy.Log("maze-hyperparam-search", autosave_freq = 15.0, autosave_vars_freq = 180.0, continuing = False)
 
     lr = 10 ** random.uniform(-5.5, -2.5)
@@ -21,10 +23,19 @@ def run_with_random_hyperparameters(_):
     else:
         separate_value_network = None
 
+    history_size = 1 if random.random() > 0.15 else random.randint(2, 5)
+    id_size = 1 if random.random() > 0.15 else random.randint(2, 8)
+    reward_type = random.choice(discrete_maze.maze.ExploreTask.reward_types)
+    scale_reward_by_difficulty = random.random() > 0.5
+    place_agent_far_from_dest = random.random() > 0.2
+    agent_placement_prop = random.uniform(0.2, 0.9)
     params = {
         # 'env_creator': schedules.GridMazeSchedule(),
-        'env_creator': schedules.ExploreCreatorSchedule(is_tree = False, history_size = 1,
-                                        id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
+        'env_creator': schedules.ExploreCreatorSchedule(is_tree = False, history_size = history_size,
+                                        id_size = id_size, reward_type = reward_type,
+                                        scale_reward_by_difficulty = scale_reward_by_difficulty,
+                                        place_agent_far_from_dest = place_agent_far_from_dest,
+                                        agent_placement_prop = agent_placement_prop),
         'clip_ratio': random.uniform(0.18, 0.22), # this seems to be set well
         'max_policy_steps': random.randint(50, 100),
         'max_kl': random.uniform(0.01, 0.02),
@@ -47,7 +58,13 @@ def run_with_random_hyperparameters(_):
 
     ppo = RNN_PPO(**params)
     ppo.initialize_variables()
-    ppo.optimize(500000)
+
+    def early_stop(policy):
+        maze_size = policy.log.get_last('current maze size', 4)
+        steps = policy.log.get_last('simulation steps', 0)
+        return maze_size == 4 and steps >= 50000
+
+    ppo.optimize(500000, early_stop = early_stop)
     log.close(ppo.session)
 
 if __name__ == '__main__':

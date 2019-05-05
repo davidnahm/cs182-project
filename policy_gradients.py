@@ -129,7 +129,7 @@ class VanillaPolicy:
             time.sleep(0.5) # so that we have time to see the end
             env.close()
 
-        path['info']['n_useless_actions'] = n_useless_actions,
+        path['info']['n_useless_actions'] = n_useless_actions
         path['info']['n_steps'] =  len(path['observations'])
 
         self.n_episodes += 1

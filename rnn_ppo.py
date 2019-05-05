@@ -195,11 +195,6 @@ class RNN_PPO(PPO_GAE):
         target_shape = list(ps[0].shape[1:])
         ps = [np.concatenate((p, np.zeros([maxlen - p.shape[0]] + target_shape, dtype = ps[0].dtype))) for p in ps]
 
-        # This handles both the case when there are extra axes and when there are not
-        # axes = list(range(len(ps[0].shape) + 1))
-        # axes[0] = 1
-        # axes[1] = 0
-        # return np.transpose(np.stack(ps), axes)
         return np.stack(ps)
 
     def _initialize_path_dict(self):
@@ -252,7 +247,7 @@ class RNN_PPO(PPO_GAE):
 
         return path
 
-    def optimize(self, total_steps):
+    def optimize(self, total_steps, early_stop = (lambda _: False)):
         steps = self.log.get_last('simulation steps', 0)
         while steps < total_steps:
             path = self.sample_trajectories()
@@ -278,7 +273,9 @@ class RNN_PPO(PPO_GAE):
                     break
             n_policy_steps = inner_step + 1
 
-            steps += np.sum(path['path lengths'])
+            total_path_lengths = np.sum(path['path lengths'])
+            steps += total_path_lengths
+
 
             if self.log:
                 log_data = {
@@ -291,9 +288,16 @@ class RNN_PPO(PPO_GAE):
                     'value loss': value_loss,
                     'number of episodes': path['number of episodes']
                 }
+                if 'n_useless_actions' in path['info'][0]:
+                    total_useless_actions = sum([info['n_useless_actions'] for info in path['info']])
+                    log_data['proportion useless actions'] = total_useless_actions / float(total_path_lengths)
                 self.env_creator.add_logging_data(log_data)
                 self.log.step(log_data, self.session)
                 self.log.print_step()
+
+            if early_stop(self):
+                print("Early stop triggered!")
+                break
 
 if __name__ == '__main__':
     log = loggy.Log("maze-rnn-ppo", autosave_freq = 10.0)

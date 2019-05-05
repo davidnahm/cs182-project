@@ -214,4 +214,4 @@ class Log:
 if __name__ == '__main__':
     g = Grapher()
     g.add_all('maze-hyperparam-search')
-    g.plot('average reward', 'simulation steps')
+    g.plot('current maze size', 'simulation steps', match_name_colors = False)

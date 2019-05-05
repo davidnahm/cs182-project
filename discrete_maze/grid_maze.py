@@ -18,7 +18,7 @@ class GridExplore:
     def _is_open(self, x, y):
         return 0 <= x < self.size_x and 0 <= y < self.size_y and self.grid[x][y]
 
-    def __init__(self, size_x, size_y, max_allowed_step_ratio = 2.0, include_last_action_and_reward = True):
+    def __init__(self, size_x, size_y, max_allowed_step_ratio = 4.0, include_last_action_and_reward = True):
         # Modified version of randomized Prim's algorithm from
         # https://en.wikipedia.org/wiki/Maze_generation_algorithm
         self.size_x = size_x
