@@ -213,5 +213,5 @@ class Log:
 
 if __name__ == '__main__':
     g = Grapher()
-    g.add_all('cartpole-ppo')
+    g.add_all('maze-hyperparam-search')
     g.plot('average reward', 'simulation steps')
