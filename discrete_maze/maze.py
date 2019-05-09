@@ -36,7 +36,7 @@ class ExploreTask:
     Observations are numpy arrays of dtype int8.
     """
     point_dist = 1.5
-    reward_types = ['distance', 'only_finished', 'penalties', 'penalty+finished']
+    reward_types = ['distance', 'only_finished', 'penalties', 'penalty+finished', 'remember']
 
     def __init__(self, n_points, is_tree = True, max_allowed_step_ratio = 2.5,
                 angle_divisions = 16, id_size = 5,
@@ -82,6 +82,7 @@ class ExploreTask:
               or gets further away
             * penalty+finished: will output 1.0 when agent reaches goal and -time_penalty every time step
               This is based on the SNAIL paper's maze task reward shaping.
+            * remember: will run the maze twice, rewarding with penalty+finished on the second iteration
 
         scale_reward_by_difficulty will scale the rewards by
             (average length of random path) / (probability random path will finish)
@@ -97,6 +98,9 @@ class ExploreTask:
 
         assert reward_type in self.reward_types, "Reward type passed in to ExploreTask not valid."
         self.reward_type = reward_type
+        if reward_type == 'remember':
+            self.first_run = True
+            self.done_observation = np.ones(self.observation_space.shape, dtype = np.int8)
 
         self.scale_reward_by_difficulty = scale_reward_by_difficulty
 
@@ -138,7 +142,6 @@ class ExploreTask:
                 self.edge_list[node_a].append(node_b)
                 self.edge_list[node_b].append(node_a)
         
-        self.end_node = random.randint(0, len(self.points) - 1)
 
         # Figure for rendering plots
         self.fig = None
@@ -197,9 +200,19 @@ class ExploreTask:
             rew = self.difficulty if done else 0.0
         elif self.reward_type == 'penalty+finished':
             rew = self.difficulty if done else -self.time_penalty / self.difficulty
-        else:
+        elif self.reward_type == 'distance':
             ddist = self.distances[self.agent] - old_distance
             rew = (1 / self.difficulty) if ddist < 0 else (-1 / self.difficulty)
+        else:
+            if self.first_run:
+                if done:
+                    self.first_run = False
+                    self.agent = self.original_agent
+                    return self.done_observation, self.difficulty, False, info
+                else:
+                    rew = 0
+            else:
+                rew = self.difficulty if done else -self.time_penalty / self.difficulty
         if not matched:
             rew -= self.invalid_move_penalty / self.difficulty
 
@@ -213,9 +226,10 @@ class ExploreTask:
 
     def reset(self):
         """
-        Will never create a new maze, but will just place agent on random node.
+        Will never create a new maze, but will just place agent / reward on random node.
         See note for __init__ to see effect of self.place_agent_far_from_dest
         """
+        self.end_node = random.randint(0, len(self.points) - 1)
         self.n_steps = 0
         self.observation_history = np.zeros(self.observation_space.shape_unflattened, dtype = np.int8)
 
@@ -275,6 +289,10 @@ class ExploreTask:
         else:
             self.difficulty = 1.0
 
+
+        if self.reward_type == 'remember':
+            self.original_agent = self.agent
+
         return self._observation()
 
     def render(self, debug = False):
@@ -310,17 +328,20 @@ class ExploreTask:
     def close(self):
         if self.fig:
             plt.close(fig = self.fig)
+            self.fig = None
 
 if __name__ == '__main__':
-    maze = ExploreTask(25, is_tree = False)
-    obs = maze.reset()
-    print("initial observation:", obs)
-    done = False
-    maze.render()
-    while not done:
-        obs, rew, done, info = maze.step(maze.action_space.sample())
+    maze = ExploreTask(16)
+    for i in range(8):
+        obs = maze.reset()
+        print("initial observation:", obs)
+        done = False
         maze.render()
-        print("*" * 64)
-        print("observation:", obs)
-        print("reward:", rew)
-        print("info", info)
+        while not done:
+            obs, rew, done, info = maze.step(maze.action_space.sample())
+            maze.render()
+            print("*" * 64)
+            print("observation:", obs)
+            print("reward:", rew)
+            print("info", info)
+        maze.close()

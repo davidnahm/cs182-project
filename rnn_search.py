@@ -78,7 +78,7 @@ def run_with_random_hyperparameters(_):
         return maze_size == 4 and steps >= 50000
 
     ppo.optimize(500000, early_stop = early_stop)
-    log.close(ppo.session)
+    log.close()
 
 if __name__ == '__main__':
     with multiprocessing.Pool(processes = 5) as pool:

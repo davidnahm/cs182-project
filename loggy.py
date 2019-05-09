@@ -75,9 +75,9 @@ class Grapher:
         while plt.fignum_exists(fig.number):
             fig.canvas.draw()
             fig.canvas.flush_events()
-            ax.set_title("Maze Size vs. Simulation Steps")
-            ax.set_xlabel("Simulation Steps")
-            ax.set_ylabel("Maze Size")
+            # ax.set_title("Maze Size vs. Simulation Steps")
+            # ax.set_xlabel("Simulation Steps")
+            # ax.set_ylabel("Maze Size")
             time.sleep(0.1)
             if time.time() - last_update > update_t:
                 last_update = time.time()
@@ -160,7 +160,7 @@ class Log:
         """
         self.extra_info.append(info)
 
-    def step(self, info, sess = None):
+    def step(self, info):
         self.step_n += 1
         info['_n'] = self.step_n
         info['_elapsed_time'] = time.time() - self.start_time
@@ -169,8 +169,8 @@ class Log:
         self.table.append(info)
         if time.time() - self.last_saved > self.autosave_freq:
             self.save()
-        if sess and time.time() - self.last_saved_vars > self.autosave_vars_freq:
-            self.save_variables(sess)
+        if self.session and time.time() - self.last_saved_vars > self.autosave_vars_freq:
+            self.save_variables()
 
     def require_directory(self):
         if self.created_directory:
@@ -185,23 +185,29 @@ class Log:
         with open(os.path.join(self.dir_path, 'log.dill'), 'wb') as dill_f:
             dill.dump(self.table, dill_f)
         with open(os.path.join(self.dir_path, 'params.dill'), 'wb') as dill_f:
-            # 'self' is usually redundant
-            self.params = {k:v for k,v in self.params.items() if dill.pickles(v) and k != 'self'}
+            # apparently even filtering like this can fail
+            # self.params = {k:v for k,v in self.params.items() if dill.pickles(v)}
+            self.params = {k:v for k,v in self.params.items() if type(v) in (int, float, bool, str)}
             dill.dump(self.params, dill_f)
 
-    def load_variables(self, session):
+    def register_session(self, session):
+        self.require_directory()
+        self.session = session
+        self.graph_writer = tf.summary.FileWriter(os.path.join(self.dir_path, 'graph'), session.graph)
+
+    def load_variables(self):
         if not self.tf_saver:
             self.tf_saver = tf.train.Saver()
         ckpt_name = 'model.ckpt-%d' % self.step_n
-        self.tf_saver.restore(session, os.path.join(self.dir_path, ckpt_name))
+        self.tf_saver.restore(self.session, os.path.join(self.dir_path, ckpt_name))
 
-    def save_variables(self, session):
+    def save_variables(self):
         print("saving variables...")
         self.last_saved_vars = time.time()
         self.require_directory()
         if not self.tf_saver:
             self.tf_saver = tf.train.Saver()
-        self.tf_saver.save(session, os.path.join(self.dir_path, 'model.ckpt'), global_step = self.step_n)
+        self.tf_saver.save(self.session, os.path.join(self.dir_path, 'model.ckpt'), global_step = self.step_n)
 
     def print_step(self):
         assert self.step_n > 0, 'Must step before printing a step.'
@@ -209,15 +215,20 @@ class Log:
         val = sorted(val, key = lambda kv: kv[0])
         print(tabulate(val, tablefmt = 'fancy_grid', numalign = 'right'))
 
-    def close(self, session = None):
+    def close(self):
         self.save()
-        if session:
-            self.save_variables(session)
+        if self.session:
+            self.save_variables()
+            self.graph_writer.close()
 
 if __name__ == '__main__':
     g = Grapher()
-    g.add_all('maze-dense-history')
-    g.add_all('maze-recurrent')
+    # g.add_all('maze-dense-history')
+    # g.add_all('maze-recurrent')
+    # g.plot('proportion useless actions', 'simulation steps', match_name_colors = True)
+    # g.plot('current maze size', 'simulation steps', match_name_colors = True)
+    g.add_all('dense-et8')
+    # g.add_all('rnn-et8')
+    g.add_all('snail-et8')
+    g.plot('average reward', 'simulation steps', match_name_colors = True)
     g.plot('proportion useless actions', 'simulation steps', match_name_colors = True)
-    g.plot('current maze size', 'simulation steps', match_name_colors = True)
-    

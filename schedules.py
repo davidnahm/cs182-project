@@ -1,6 +1,7 @@
 from discrete_maze.maze import ExploreTask
 from discrete_maze.grid_maze import GridExplore
 import gym
+import dill
 
 class DummyGymSchedule:
     """
@@ -22,6 +23,11 @@ class DummyGymSchedule:
 
     def allow_change(self):
         return False
+
+class ConstantMazeSchedule(DummyGymSchedule):
+    def __init__(self, dill_name):
+        with open(dill_name, 'rb') as f:
+            self.env = dill.load(f)
 
 class ExploreCreatorSchedule:
     """

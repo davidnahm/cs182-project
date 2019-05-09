@@ -40,23 +40,23 @@ class SNAIL_PPO(RNN_PPO):
 
     def _attention_block(self, x, key_size, value_size, scope):
         with tf.variable_scope(scope):
-            keys = tf.layers.dense(x, key_size)
-            query = tf.layers.dense(x, key_size)
-            similarities = tf.linalg.matmul(query, tf.transpose(keys, (0, 2, 1))) / (key_size ** 0.5)
-            probabilities = tf.nn.softmax(similarities)
+            keys = tf.layers.dense(x, key_size, name = "keys_affine")
+            query = tf.layers.dense(x, key_size, name = "query_affine")
+            similarities = tf.linalg.matmul(query, tf.transpose(keys, (0, 2, 1)), name = "similarities") / (key_size ** 0.5)
+            probabilities = tf.nn.softmax(similarities, name = "probabilities")
 
             n_fills = tf.cast((tf.shape(x)[1] + 1) * tf.shape(x)[1] / 2, dtype = tf.int32)
             mask_ones = tf.ones(n_fills, tf.float32)
-            mask = tf.contrib.distributions.fill_triangular(mask_ones)
-            mask = tf.expand_dims(mask, axis = 0)
+            mask = tf.contrib.distributions.fill_triangular(mask_ones, upper = False, name = "fill_mask")
+            mask = tf.expand_dims(mask, axis = 0, name = "expand_mask")
             probabilities *= mask
 
             # we perform normalization twice this way, but I believe that softmax in
             # tensorflow is more stable than just taking exponents and normalizing
-            probabilities /= tf.expand_dims(tf.reduce_sum(probabilities, axis = 1), axis = 1)
+            probabilities /= tf.expand_dims(tf.reduce_sum(probabilities, axis = 2), axis = 2)
 
-            values = tf.layers.dense(x, value_size)
-            read = tf.linalg.matmul(probabilities, values)
+            values = tf.layers.dense(x, value_size, name = "value_affine")
+            read = tf.linalg.matmul(probabilities, values, name = "read_values")
         return tf.concat([read, x], axis = 2)
     
     def _create_snail_vars(self, dummy_env):
@@ -70,7 +70,7 @@ class SNAIL_PPO(RNN_PPO):
         x = self._tc_block(x, self.temporal_span, 16, "temporal_conv_2")
         x = self._attention_block(x, 32, 32, "attention_2")
         
-        dummy_env = self.env_creator.new_env()
+        # dummy_env = self.env_creator.new_env()
         policy = tf.layers.dense(x, dummy_env.action_space.n)
         self.policy = tf.nn.log_softmax(policy)
         self.value_batch = self.value = tf.squeeze(tf.layers.dense(x, 1), axis = 2)
@@ -87,7 +87,7 @@ class SNAIL_PPO(RNN_PPO):
                  max_policy_steps = 80,
                  max_kl = 0.015,
                  lambda_gae = 0.95,
-                 lr_schedule = (lambda t: 2e-4),
+                 lr_schedule = (lambda t: 3e-4),
                  value_prop_schedule = (lambda t: 0.01),
                  log = None,
                  gamma = 0.9,
@@ -176,12 +176,13 @@ class SNAIL_PPO(RNN_PPO):
         return obs, reward, done, info
 
 if __name__ == '__main__':
-    log = loggy.Log("maze-snail", autosave_freq = 15.0, autosave_vars_freq = 30.0, continuing = False)
+    log = loggy.Log("snail-rem16", autosave_freq = 15.0, autosave_vars_freq = 30.0, continuing = False)
 
     params = {
-        'env_creator': schedules.ExploreCreatorSchedule(is_tree = False, history_size = 1,
-                                        id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
-        'min_observations_per_step': 4000,
+        # 'env_creator': schedules.ExploreCreatorSchedule(is_tree = False, history_size = 1,
+        #                                 id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
+        'env_creator': schedules.ConstantMazeSchedule('saved_mazes/rem16.dill'),
+        'min_observations_per_step': 3000,
         'log': log,
         'render': False,
     }
@@ -191,5 +192,5 @@ if __name__ == '__main__':
 
     snail = SNAIL_PPO(**params)
     snail.initialize_variables()
-    snail.optimize(300000)
-    log.close(snail.session)
+    snail.optimize(1000000)
+    log.close()

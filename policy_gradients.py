@@ -78,11 +78,12 @@ class VanillaPolicy:
         tf_config = tf.ConfigProto()
         tf_config.gpu_options.allow_growth = True
         self.session = tf.Session(config = tf_config)
-        self.session = tf_debug.LocalCLIDebugWrapperSession(self.session)
+        # self.session = tf_debug.LocalCLIDebugWrapperSession(self.session)
+        self.log.register_session(self.session)
         if not self.log.continuing:
             tf.global_variables_initializer().run(session = self.session)
         else:
-            self.log.load_variables(self.session)
+            self.log.load_variables()
 
 
     def _initialize_sample_path_dict(self):
@@ -225,7 +226,7 @@ class VanillaPolicy:
             }
             self.env_creator.add_logging_data(log_data)
 
-            self.log.step(log_data, self.session)
+            self.log.step(log_data)
             self.log.print_step()
 
 
@@ -250,4 +251,4 @@ if __name__ == '__main__':
     )
     vp.initialize_variables()
     vp.optimize(100000)
-    log.close(vp.session)
+    log.close()

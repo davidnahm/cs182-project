@@ -92,7 +92,7 @@ class VanillaPolicyGAE(VanillaPolicy):
             }
             self.env_creator.add_logging_data(log_data)
 
-            self.log.step(log_data, self.session)
+            self.log.step(log_data)
             self.log.print_step()
 
 
@@ -116,4 +116,4 @@ if __name__ == '__main__':
     )
     vpgae.initialize_variables()
     vpgae.optimize(200000)
-    log.close(vpgae.session)
+    log.close()
