@@ -59,26 +59,57 @@ class SNAIL_PPO(RNN_PPO):
             read = tf.linalg.matmul(probabilities, values, name = "read_values")
         return tf.concat([read, x], axis = 2)
     
+    def _create_snail_vars_for_input(self, group, obs_in, dummy_env, scope, reuse):
+        with tf.variable_scope(scope, reuse = reuse):
+            x = self._attention_block(self.preprocess_op(obs_in), 16, 16, "attention_1")
+            x = self._tc_block(x, self.temporal_span, 16, "temporal_conv_1")
+            x = self._tc_block(x, self.temporal_span, 16, "temporal_conv_2")
+            x = self._attention_block(x, 32, 32, "attention_2")
+            
+            policy = tf.layers.dense(x, dummy_env.action_space.n)
+            group.policy = tf.nn.log_softmax(policy)
+            group.value = tf.squeeze(tf.layers.dense(x, 1), axis = 2)
+
+
     def _create_snail_vars(self, dummy_env):
         T = 32
         # TODO: need to align
         # actions_ohot = tf.one_hot(self.action_placeholder, depth = dummy_env.action_space.n)
         # rewards = tf.expand_dims(self.reward_placeholder, axis = 2)
         # combined_input = tf.concat([actions_ohot, rewards, self.obs_input], axis = 2)
-        x = self._attention_block(self.preprocess_op(self.obs_input), 16, 16, "attention_1")
-        x = self._tc_block(x, self.temporal_span, 16, "temporal_conv_1")
-        x = self._tc_block(x, self.temporal_span, 16, "temporal_conv_2")
-        x = self._attention_block(x, 32, 32, "attention_2")
+
+        # Speed up training by not copying observations each time
+        obs_shape = list(dummy_env.observation_space.shape)
+        with tf.variable_scope("create_saved_observations"):
+            no_observation_initializer = tf.zeros([1, 0] + obs_shape)
+            self.saved_obs = tf.get_variable("saved_observations", shape = [1, 0] + obs_shape,
+                                            validate_shape = False,
+                                            trainable = False)
+            self.clear_saved_obs_op = tf.assign(self.saved_obs, no_observation_initializer,
+                                                validate_shape = False, name = "clear_saved_observation")
+            self.single_obs_placeholder = tf.placeholder(tf.float32, shape = obs_shape, name = "single_obs_placeholder")
+            single_obs_with_dimensions = tf.expand_dims(self.single_obs_placeholder, axis = 0)
+            single_obs_with_dimensions = tf.expand_dims(single_obs_with_dimensions, axis = 0)
+            appended_obs = tf.concat([self.saved_obs, single_obs_with_dimensions], 1, name = "append_observation")
+            self.append_obs_op = tf.assign(self.saved_obs, appended_obs, validate_shape = False, name = "assign_new_observation")
         
-        # dummy_env = self.env_creator.new_env()
-        policy = tf.layers.dense(x, dummy_env.action_space.n)
-        self.policy = tf.nn.log_softmax(policy)
-        self.value_batch = self.value = tf.squeeze(tf.layers.dense(x, 1), axis = 2)
-        self.value_1 = self.value[0, -1]
-        self.distribution_1 = tf.distributions.Categorical(logits = self.policy[0, -1, :])
-        self.sample_op = self.distribution_1.sample()
-        self.logprob_sample_1_op = self.distribution_1.log_prob(self.sample_op)
-        self.distribution = tf.distributions.Categorical(logits = self.policy)
+        # Empty class so we can qualify operations
+        class Empty: pass
+        self.single_obs_group = Empty()
+        self.batch_obs_group = Empty()
+
+        with tf.control_dependencies([self.append_obs_op]):
+            # so that TF will know the shape for dense units
+            saved_obs = tf.reshape(self.saved_obs.read_value(), shape = [1, -1] + obs_shape)
+            self._create_snail_vars_for_input(self.single_obs_group, saved_obs, dummy_env, "snail", False)
+            self.value_1 = self.single_obs_group.value[0, -1]
+            self.distribution_1 = tf.distributions.Categorical(logits = self.single_obs_group.policy[0, -1, :])
+            self.sample_op = self.distribution_1.sample()
+            self.logprob_sample_1_op = self.distribution_1.log_prob(self.sample_op)
+        
+        self._create_snail_vars_for_input(self.batch_obs_group, self.obs_input, dummy_env, "snail", True)
+        self.value_batch = self.batch_obs_group.value
+        self.distribution = tf.distributions.Categorical(logits = self.batch_obs_group.policy)
         self.logprob_op = self.distribution.log_prob(self.action_placeholder, name = "logprob_for_action")
 
 
@@ -154,14 +185,15 @@ class SNAIL_PPO(RNN_PPO):
         self.update_op = tf.train.AdamOptimizer(self.lr_placeholder).minimize(-self.value_op)
 
     def _initialize_sample_path_dict(self):
+        self.session.run(self.clear_saved_obs_op)
         return PPO_GAE._initialize_sample_path_dict(self)
 
     def _step_once(self, path, env, obs):
         path['observations'].append(obs)
-        action, logprob, value = self.session.run(
-            [self.sample_op, self.logprob_sample_1_op, self.value_1],
+        _, action, logprob, value = self.session.run(
+            [self.append_obs_op, self.sample_op, self.logprob_sample_1_op, self.value_1],
             feed_dict = {
-                self.obs_placeholder: [path['observations']]
+                self.single_obs_placeholder: obs
             }
         )
         action = action
@@ -176,15 +208,16 @@ class SNAIL_PPO(RNN_PPO):
         return obs, reward, done, info
 
 if __name__ == '__main__':
-    log = loggy.Log("snail-rem16", autosave_freq = 15.0, autosave_vars_freq = 30.0, continuing = False)
+    log = loggy.Log("snail-et8", autosave_freq = 15.0, autosave_vars_freq = 30.0, continuing = False)
 
     params = {
         # 'env_creator': schedules.ExploreCreatorSchedule(is_tree = False, history_size = 1,
         #                                 id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
-        'env_creator': schedules.ConstantMazeSchedule('saved_mazes/rem16.dill'),
+        'env_creator': schedules.ConstantMazeSchedule('saved_mazes/et8.dill'),
         'min_observations_per_step': 3000,
         'log': log,
         'render': False,
+        'lr_schedule': (lambda t: (3e-4 if t < 60000 else 3e-5))
     }
 
     params = log.process_params(params)
