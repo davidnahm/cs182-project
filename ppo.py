@@ -140,7 +140,7 @@ class PPO_GAE(VanillaPolicyGAE):
 if __name__ == '__main__':
     # import gym_miniworld
     # log = loggy.Log("miniworld-ppo", autosave_freq = 30.0)
-    log = loggy.Log("dense-rem16", autosave_freq = 15.0, autosave_vars_freq = 60.0, continuing = False)
+    log = loggy.Log("dense-gerem8", autosave_freq = 15.0, autosave_vars_freq = 60.0, continuing = False)
 
     params = {
         'clip_ratio': 0.2,
@@ -156,15 +156,15 @@ if __name__ == '__main__':
         #                                 id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
         # 'env_creator': schedules.DummyGymSchedule('LunarLander-v2'),
         # 'env_creator': schedules.DummyGymSchedule('MiniWorld-Hallway-v0'),
-        'env_creator': schedules.ConstantMazeSchedule('saved_mazes/rem16.dill'),
+        'env_creator': schedules.ConstantMazeSchedule('saved_mazes/gerem8.dill'),
         'lr_schedule': (lambda t: 3e-4),
-        'min_observations_per_step': 3000,
+        'min_observations_per_step': 5000,
         'log': log,
         'gamma': 0.999,
         'lambda_gae': .97,
         'value_lr_schedule': (lambda t: 0.0005),
         'render': False,
-        'render_mod': 256
+        'render_mod': 1
     }
 
     params = log.process_params(params)

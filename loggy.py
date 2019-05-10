@@ -28,7 +28,7 @@ class Grapher:
     def add_last(self, name, k = 1):
         self.names.extend(sorted(self._get_matches(name))[-k:])
 
-    def _get_data(self, y_name, x_name, smooth_sigma):
+    def _get_data_attempt(self, y_name, x_name, smooth_sigma):
         all_xs, all_ys = [], []
         for name in self.names:
             with open(os.path.join(name, 'log.dill'), 'rb') as dill_f:
@@ -43,6 +43,14 @@ class Grapher:
                 all_xs.append(xs)
                 all_ys.append(ys)
         return all_xs, all_ys
+
+    def _get_data(self, y_name, x_name, smooth_sigma):
+        while True:
+            try:
+                return self._get_data_attempt(y_name, x_name, smooth_sigma)
+            except EOFError:
+                print("EOF error occurred. Probably just reading while writing. Retrying soon...")
+                time.sleep(1.0)
 
     def plot(self, y_name, x_name = '_n', match_name_colors = True,
                 smooth_sigma = 0.0, update_t = 1.0, **plotargs):
@@ -128,6 +136,11 @@ class Log:
                 self.params = dill.load(dill_f)
 
             self.step_n = len(self.table)
+            while True:
+                if os.path.isfile(os.path.join(self.dir_path, 'model.ckpt-%d.meta' % self.step_n)):
+                    break
+                self.step_n -= 1
+            self.table = self.table[:self.step_n]
             # hack to make the elapsed time continue as if nothing happened
             self.start_time = current_time - self.table[-1]['_elapsed_time']
 
@@ -229,7 +242,15 @@ if __name__ == '__main__':
     # g.plot('current maze size', 'simulation steps', match_name_colors = True)
     # g.add_all('dense-et8')
     # g.add_all('rnn-et8')
-    g.add_all('snail-et8')
-    g.plot('simulation steps', '_elapsed_time', match_name_colors = False)
-    g.plot('average reward', 'simulation steps', match_name_colors = False)
-    # g.plot('proportion useless actions', 'simulation steps', match_name_colors = True)
+    # g.add_all('snail-et8')
+
+    # g.add_all('dense-rem16')
+    # g.add_all('snail-rem16')
+    # g.add_all('rnn-rem16')
+    # g.plot('average reward', '_elapsed_time', match_name_colors = True)
+    # g.plot('kl divergence', '_elapsed_time', match_name_colors = True)
+
+    g.add_last('dense-gerem8')
+    g.add_last('snail-gerem8')
+    g.plot('average reward', '_elapsed_time', match_name_colors = True)
+    g.plot('kl divergence', '_elapsed_time', match_name_colors = True)

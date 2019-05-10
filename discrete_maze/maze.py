@@ -44,8 +44,8 @@ class ExploreTask:
                 place_agent_far_from_dest = True,
                 agent_placement_prop = 0.8,
                 reward_type = 'penalty+finished',
-                scale_reward_by_difficulty = True,
-                time_penalty = .05,
+                scale_reward_by_difficulty = False,
+                time_penalty = 1.0,
                 invalid_move_penalty = 1.0):
         """
         It's not strictly guaranteed that you will get n_points in the graph, 
@@ -86,6 +86,8 @@ class ExploreTask:
 
         scale_reward_by_difficulty will scale the rewards by
             (average length of random path) / (probability random path will finish)
+        If this is set to False, we will just divide negative rewards by the number of nodes in the graph
+
         This does increase the time to run .reset() significantly, doubling the time necessary to initialize
         at around maze size 40.
         """
@@ -199,7 +201,7 @@ class ExploreTask:
         elif self.reward_type == 'only_finished':
             rew = self.difficulty if done else 0.0
         elif self.reward_type == 'penalty+finished':
-            rew = self.difficulty if done else -self.time_penalty / self.difficulty
+            rew = 1.0 if done else -self.time_penalty / self.difficulty
         elif self.reward_type == 'distance':
             ddist = self.distances[self.agent] - old_distance
             rew = (1 / self.difficulty) if ddist < 0 else (-1 / self.difficulty)
@@ -208,13 +210,13 @@ class ExploreTask:
                 if done:
                     self.first_run = False
                     self.agent = self.original_agent
-                    return self.done_observation, self.difficulty, False, info
+                    return self.done_observation, 1.0, False, info
                 else:
-                    rew = 0
+                    rew = 0.0
             else:
-                rew = self.difficulty if done else -self.time_penalty / self.difficulty
+                rew = 1.0 if done else -self.time_penalty / self.difficulty
         if not matched:
-            rew -= self.invalid_move_penalty / self.difficulty
+            rew -= self.invalid_move_penalty
 
         if self.n_steps >= self.max_allowed_steps:
             done = True
@@ -287,7 +289,7 @@ class ExploreTask:
             p_inv = 1 / sum(end_ps)
             self.difficulty = weighted_l * p_inv * p_inv
         else:
-            self.difficulty = 1.0
+            self.difficulty = float(len(self.edge_list))
 
 
         if self.reward_type == 'remember':
@@ -331,14 +333,15 @@ class ExploreTask:
             self.fig = None
 
 if __name__ == '__main__':
-    maze = ExploreTask(16)
+    maze = ExploreTask(16, reward_type = 'remember', max_allowed_step_ratio = 15.0)
     for i in range(8):
         obs = maze.reset()
         print("initial observation:", obs)
         done = False
         maze.render()
         while not done:
-            obs, rew, done, info = maze.step(maze.action_space.sample())
+            # obs, rew, done, info = maze.step(maze.action_space.sample())
+            obs, rew, done, info = maze.step(int(input()))
             maze.render()
             print("*" * 64)
             print("observation:", obs)

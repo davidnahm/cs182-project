@@ -61,10 +61,10 @@ class SNAIL_PPO(RNN_PPO):
     
     def _create_snail_vars_for_input(self, group, obs_in, dummy_env, scope, reuse):
         with tf.variable_scope(scope, reuse = reuse):
-            x = self._attention_block(self.preprocess_op(obs_in), 16, 16, "attention_1")
-            x = self._tc_block(x, self.temporal_span, 16, "temporal_conv_1")
-            x = self._tc_block(x, self.temporal_span, 16, "temporal_conv_2")
-            x = self._attention_block(x, 32, 32, "attention_2")
+            x = self._attention_block(self.preprocess_op(obs_in), 64, 64, "attention_1")
+            x = self._tc_block(x, self.temporal_span, 64, "temporal_conv_1")
+            x = self._tc_block(x, self.temporal_span, 64, "temporal_conv_2")
+            x = self._attention_block(x, 64, 64, "attention_2")
             
             policy = tf.layers.dense(x, dummy_env.action_space.n)
             group.policy = tf.nn.log_softmax(policy)
@@ -72,7 +72,6 @@ class SNAIL_PPO(RNN_PPO):
 
 
     def _create_snail_vars(self, dummy_env):
-        T = 32
         # TODO: need to align
         # actions_ohot = tf.one_hot(self.action_placeholder, depth = dummy_env.action_space.n)
         # rewards = tf.expand_dims(self.reward_placeholder, axis = 2)
@@ -126,7 +125,7 @@ class SNAIL_PPO(RNN_PPO):
                  render = False,
                  render_mod = 16,
                  preprocess_op = (lambda x: x),
-                 temporal_span = 32):
+                 temporal_span = 64):
         self.clip_ratio = clip_ratio
         self.max_policy_steps = max_policy_steps
         self.max_kl = max_kl
@@ -208,16 +207,17 @@ class SNAIL_PPO(RNN_PPO):
         return obs, reward, done, info
 
 if __name__ == '__main__':
-    log = loggy.Log("snail-et8", autosave_freq = 15.0, autosave_vars_freq = 30.0, continuing = False)
+    log = loggy.Log("snail-gerem8", autosave_freq = 15.0, autosave_vars_freq = 180.0, continuing = False)
 
     params = {
         # 'env_creator': schedules.ExploreCreatorSchedule(is_tree = False, history_size = 1,
         #                                 id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
-        'env_creator': schedules.ConstantMazeSchedule('saved_mazes/et8.dill'),
-        'min_observations_per_step': 3000,
+        'env_creator': schedules.ConstantMazeSchedule('saved_mazes/gerem8.dill'),
+        'min_observations_per_step': 5000,
         'log': log,
-        'render': False,
-        'lr_schedule': (lambda t: (3e-4 if t < 60000 else 3e-5))
+        'lr_schedule': (lambda t: 3e-4 * ((1.0 + t/15000.0) ** (-0.5))),
+        'render': True,
+        'render_mod': 64
     }
 
     params = log.process_params(params)

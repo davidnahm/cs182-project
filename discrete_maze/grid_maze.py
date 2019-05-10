@@ -18,13 +18,15 @@ class GridExplore:
     def _is_open(self, x, y):
         return 0 <= x < self.size_x and 0 <= y < self.size_y and self.grid[x][y]
 
-    def __init__(self, size_x, size_y, max_allowed_step_ratio = 4.0, include_last_action_and_reward = True):
+    def __init__(self, size_x, size_y, max_allowed_step_ratio = 4.0,
+                 include_last_action_and_reward = True, remember = True):
         # Modified version of randomized Prim's algorithm from
         # https://en.wikipedia.org/wiki/Maze_generation_algorithm
         self.size_x = size_x
         self.size_y = size_y
         self.action_space = gym.spaces.Discrete(4)
         self.include_last_action_and_reward = include_last_action_and_reward
+        self.remember = remember
 
         self.obs_n = 4
         if include_last_action_and_reward:
@@ -43,6 +45,9 @@ class GridExplore:
                 self.grid[candidate[0]][candidate[1]] = True
                 self.open_squares.append(candidate)
             candidates.remove(candidate)
+        
+        if remember:
+            self.done_observation = np.ones(self.observation_space.shape, dtype = np.int8)
         
         self.max_allowed_steps = int(max_allowed_step_ratio * len(self.open_squares))
         self.window = None
@@ -85,10 +90,9 @@ class GridExplore:
         if info['correct_direction']:
             self.agent = new_loc
         done = self.agent == self.end_node
-        rew = 1.0 if done else -.01 # TODO: add different types of reward?
+        rew = 1.0 if done else -1.0 / float(len(self.open_squares)) # TODO: add different types of reward?
         if not info['correct_direction']:
-            rew -= .01
-        self.last_reward = rew
+            rew -= 1.0 / float(len(self.open_squares))
 
         if self.n_steps >= self.max_allowed_steps:
             done = True
@@ -96,12 +100,38 @@ class GridExplore:
         else:
             info['truncated'] = False
 
-        return self._observation(), rew, done, info
+        obs = self._observation()
+
+        if self.remember:
+            if self.first_run:
+                if done and not info['truncated']:
+                    self.first_run = False
+                    self.agent = self.original_agent
+                    obs = self.done_observation
+                    rew = 1.0
+                    done = False
+                else:
+                    rew = 0
+            else:
+                if done and not info['truncated']:
+                    rew = 1.0
+                else:
+                    rew = -1.0 / float(len(self.open_squares))
+
+        self.last_reward = rew
+
+        return obs, rew, done, info
 
     def reset(self):
         self.end_node, self.agent = random.sample(self.open_squares, 2)
         self.n_steps = 0
+        self.last_reward = 0.0
         self.last_action = None
+
+        if self.remember:
+            self.original_agent = self.agent
+            self.first_run = True
+
         return self._observation()
 
     def render(self):
@@ -126,11 +156,12 @@ class GridExplore:
                 color = 'white'
             self.canvas.create_rectangle(x1, y1, x2, y2, fill = color)
         self.window.update()
-        time.sleep(0.05) # allows us to see what is happening
+        time.sleep(0.01) # allows us to see what is happening
 
     def close(self):
         if self.window:
             self.window.destroy()
+            self.window = None
 
 if __name__ == '__main__':
     maze = GridExplore(6, 6)
@@ -139,7 +170,8 @@ if __name__ == '__main__':
     done = False
     maze.render()
     while not done:
-        obs, rew, done, info = maze.step(maze.action_space.sample())
+        # obs, rew, done, info = maze.step(maze.action_space.sample())
+        obs, rew, done, info = maze.step(int(input()))
         maze.render()
         print("*" * 64)
         print("observation:", obs)

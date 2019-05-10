@@ -177,7 +177,6 @@ class RNN_PPO(PPO_GAE):
                 self.seqlen_placeholder: [1]
             }
         )
-        print(action)
         # adding debug info
         # action, logprob, value, _, state, state_out = self.session.run(
         #     [self.sample_op, self.logprob_sample_1_op, self.value_1, self.update_state_op, self.state_variable, self.hidden_state_out],
@@ -315,7 +314,8 @@ class RNN_PPO(PPO_GAE):
                     'kl divergence': approximate_kl,
                     'inner policy training steps': n_policy_steps,
                     'value loss': value_loss,
-                    'number of episodes': path['number of episodes']
+                    'number of episodes': path['number of episodes'],
+                    'learning rate': self.lr_schedule(steps)
                 }
                 if 'n_useless_actions' in path['info'][0]:
                     total_useless_actions = sum([info['n_useless_actions'] for info in path['info']])
@@ -331,7 +331,7 @@ class RNN_PPO(PPO_GAE):
 if __name__ == '__main__':
     # import gym_miniworld
     # log = loggy.Log("miniworld-rnn", autosave_freq = 30.0)
-    log = loggy.Log("rnn-et8", autosave_freq = 30.0)
+    log = loggy.Log("rnn-rem16", autosave_freq = 30.0)
     def dense_concat_net(*args, **varargs):
         return models.mlp(out_size = 16, output_activation = tf.tanh, scope = "concat_net",
                           flatten = False,
@@ -342,19 +342,20 @@ if __name__ == '__main__':
         # env_creator = schedules.ExploreCreatorSchedule(is_tree = False, history_size = 1,
         #                                 id_size = 1, reward_type = 'penalty+finished', scale_reward_by_difficulty = False),
         # env_creator = schedules.DummyGymSchedule('MiniWorld-Hallway-v0'),
-        env_creator = schedules.ConstantMazeSchedule('saved_mazes/et8.dill'),
+        env_creator = schedules.ConstantMazeSchedule('saved_mazes/rem16.dill'),
         # preprocess_op = models.miniworld_preprocess,
         lr_schedule = (lambda t: 3e-4),
         value_prop_schedule = (lambda t: 10.0),
-        min_observations_per_step = 50,
+        min_observations_per_step = 3000,
         log = log,
         render = False,
         render_mod = 512,
         rnn_stacks = 2,
+        hidden_units = 128
         # separate_value_network = (lambda *args, **varargs:
         #     tf.squeeze(models.mlp(scope = "value_network", out_size = 1, flatten = False, *args, **varargs), axis = 2)),
         # concat_net = dense_concat_net
     )
     vpgae.initialize_variables()
-    vpgae.optimize(200000)
+    vpgae.optimize(1000000)
     log.close()
