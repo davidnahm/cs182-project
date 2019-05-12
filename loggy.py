@@ -53,7 +53,16 @@ class Grapher:
                 time.sleep(1.0)
 
     def plot(self, y_name, x_name = '_n', match_name_colors = True,
-                smooth_sigma = 0.0, update_t = 1.0, **plotargs):
+                smooth_sigma = 0.0, update_t = 1.0,
+                title = None, x_label = None, y_label = None, save = None,
+                **plotargs):
+        if not x_label:
+            x_label = x_name
+        if not y_label:
+            y_label = y_name
+        if not title:
+            title = '%s vs %s' % (y_label, x_label)
+
         palette = {}
         palette_i = 0
         plt.ion()
@@ -81,11 +90,15 @@ class Grapher:
         last_update = time.time()
         # Bad practice but there's no "wait for close" function
         while plt.fignum_exists(fig.number):
+            ax.set_title(title)
+            ax.set_xlabel(x_label)
+            ax.set_ylabel(y_label)
+            if save:
+                fig.savefig(save, dpi = 200)
+                plt.close(fig)
+                return
             fig.canvas.draw()
             fig.canvas.flush_events()
-            # ax.set_title("Maze Size vs. Simulation Steps")
-            # ax.set_xlabel("Simulation Steps")
-            # ax.set_ylabel("Maze Size")
             time.sleep(0.1)
             if time.time() - last_update > update_t:
                 last_update = time.time()

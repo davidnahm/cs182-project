@@ -1,0 +1,56 @@
+import loggy
+import schedules
+from ppo import PPO_GAE
+from rnn_ppo import RNN_PPO
+from snail_ppo import SNAIL_PPO
+import models
+import tensorflow as tf
+
+def run(Policy, log, params, total_steps):
+    tf.reset_default_graph()
+    params = log.process_params(params)
+    log.add_hyperparams(params)
+
+    policy = Policy(**params)
+    policy.initialize_variables()
+    policy.optimize(total_steps)
+    log.close()
+
+def test_perm(k = 2, obs_per_step = 800, total_steps = 25000):
+    base_params = {
+        'env_creator': schedules.ConstantPermSchedule(k, k * k),
+        'min_observations_per_step': obs_per_step,
+    }
+    log_dense = loggy.Log("dense-perm-%d" % k)
+    params_dense = {
+        'model': (lambda *args, **varargs: models.mlp(*args, **varargs)),
+        'value_model': (lambda *args, **varargs: tf.squeeze(models.mlp(out_size = 1,
+                                                                *args, **varargs), axis = 1)),
+        'log': log_dense,
+        **base_params
+    }
+    run(PPO_GAE, log_dense, params_dense, total_steps)
+    
+    log_rnn = loggy.Log("rnn-perm-%d" % k)
+    params_rnn = {
+        'log': log_rnn,
+        **base_params
+    }
+    run(RNN_PPO, log_rnn, params_rnn, total_steps)
+
+    log_snail = loggy.Log("snail-perm-%d" % k)
+    params_snail = {'log': log_snail, **base_params}
+    run(SNAIL_PPO, log_snail, params_snail, total_steps)
+
+    grapher = loggy.Grapher()
+    grapher.add_last("dense-perm-%d" % k)
+    grapher.add_last("rnn-perm-%d" % k)
+    grapher.add_last("snail-perm-%d" % k)
+    grapher.plot('average reward', title = "Average Reward for k=%d permutations" % k, save = 'figures/perm_%d.png' % k)
+
+if __name__ == '__main__':
+    test_perm(2)
+    test_perm(3)
+    test_perm(5)
+    test_perm(7)
+    test_perm(11)

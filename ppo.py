@@ -62,11 +62,22 @@ class PPO(VanillaPolicy):
             self.log.print_step()
 
 class PPO_GAE(VanillaPolicyGAE):
-    def __init__(self, clip_ratio, max_policy_steps, max_val_steps, max_kl,
-                 value_model, value_lr_schedule, lambda_gae,
-                 model, env_creator, lr_schedule,
-                 min_observations_per_step,
-                 log, gamma, render = False, render_mod = 16):
+    def __init__(self,
+                 log,
+                 model,
+                 value_model,
+                 env_creator,
+                 clip_ratio = 0.2,
+                 max_policy_steps = 80,
+                 max_val_steps = 80,
+                 max_kl = 0.015,
+                 value_lr_schedule = (lambda t: 0.0005),
+                 lambda_gae = 0.97,
+                 lr_schedule = (lambda t: 3e-4),
+                 min_observations_per_step = 1000,
+                 gamma = 0.999,
+                 render = False,
+                 render_mod = 16):
         self.clip_ratio = clip_ratio
         self.max_policy_steps = max_policy_steps
         self.max_val_steps = max_val_steps

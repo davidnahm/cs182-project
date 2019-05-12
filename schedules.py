@@ -1,5 +1,6 @@
 from discrete_maze.maze import ExploreTask
 from discrete_maze.grid_maze import GridExplore
+from perm_env import PermEnv
 import gym
 import dill
 
@@ -28,6 +29,10 @@ class ConstantMazeSchedule(DummyGymSchedule):
     def __init__(self, dill_name):
         with open(dill_name, 'rb') as f:
             self.env = dill.load(f)
+
+class ConstantPermSchedule(DummyGymSchedule):
+    def __init__(self, k, max_runs):
+        self.env = PermEnv(k, max_runs)
 
 class ExploreCreatorSchedule:
     """

@@ -61,10 +61,12 @@ class SNAIL_PPO(RNN_PPO):
     
     def _create_snail_vars_for_input(self, group, obs_in, dummy_env, scope, reuse):
         with tf.variable_scope(scope, reuse = reuse):
-            x = self._attention_block(self.preprocess_op(obs_in), 64, 64, "attention_1")
-            x = self._tc_block(x, self.temporal_span, 64, "temporal_conv_1")
-            x = self._tc_block(x, self.temporal_span, 64, "temporal_conv_2")
-            x = self._attention_block(x, 64, 64, "attention_2")
+            x = self._attention_block(self.preprocess_op(obs_in),
+                                      self.representation_size, self.representation_size, "attention_1")
+            x = self._tc_block(x, self.temporal_span, self.representation_size, "temporal_conv_1")
+            x = self._tc_block(x, self.temporal_span, self.representation_size, "temporal_conv_2")
+            x = self._attention_block(x,
+                                      self.representation_size, self.representation_size, "attention_2")
             
             policy = tf.layers.dense(x, dummy_env.action_space.n)
             group.policy = tf.nn.log_softmax(policy)
@@ -122,6 +124,7 @@ class SNAIL_PPO(RNN_PPO):
                  log = None,
                  gamma = 0.9,
                  min_observations_per_step = 4000,
+                 representation_size = 32,
                  render = False,
                  render_mod = 16,
                  preprocess_op = (lambda x: x),
@@ -136,6 +139,7 @@ class SNAIL_PPO(RNN_PPO):
         self.log = log
         self.gamma = gamma
         self.min_observations_per_step = min_observations_per_step
+        self.representation_size = representation_size
         self.render = render
         self.render_mod = render_mod
         self.n_episodes = 0 # how many episodes have been simulated to completion
@@ -215,12 +219,14 @@ if __name__ == '__main__':
         'env_creator': schedules.ConstantMazeSchedule('saved_mazes/gerem8.dill'),
         'min_observations_per_step': 5000,
         'log': log,
-        'lr_schedule': (lambda t: 3e-4 * ((1.0 + t/15000.0) ** (-0.5))),
-        'render': True,
+        # 'lr_schedule': (lambda t: 3e-4 * ((1.0 + t/15000.0) ** (-0.5))),
+        'lr_schedule': (lambda t: 3e-4),
+        'render': False,
         'render_mod': 64
     }
 
     params = log.process_params(params)
+    params['render'] = False
     log.add_hyperparams(params)
 
     snail = SNAIL_PPO(**params)
