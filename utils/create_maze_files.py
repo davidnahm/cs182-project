@@ -2,10 +2,18 @@ from discrete_maze.grid_maze import GridExplore
 from discrete_maze.maze import ExploreTask
 import dill
 
-gerem8 = GridExplore(8, 8)
-with open('saved_mazes/gerem8.dill', 'wb') as f:
-    dill.dump(gerem8, f)
+for size in [4, 8, 16, 32]:
+    grid = GridExplore(size, size, remember = False)
+    with open('saved_mazes/grid_%d.dill' % size, 'wb') as f:
+        dill.dump(grid, f)
+    grid_rem = GridExplore(size, size, remember = True)
+    with open('saved_mazes/grid_rem_%d.dill' % size, 'wb') as f:
+        dill.dump(grid_rem, f)
 
-gerem16 = GridExplore(16, 16)
-with open('saved_mazes/gerem16.dill', 'wb') as f:
-    dill.dump(gerem16, f)
+    for is_tree, name in [(False, 'delaunay'), (True, 'tree')]:
+        task = ExploreTask(size, reward_type = 'penalty+finished', is_tree = is_tree)
+        with open('saved_mazes/%s_%d.dill' % (name, size), 'wb') as f:
+            dill.dump(task, f)
+        task_rem = ExploreTask(size, reward_type = 'remember', is_tree = is_tree)
+        with open('saved_mazes/%s_rem_%d.dill' % (name, size), 'wb') as f:
+            dill.dump(task_rem, f)
